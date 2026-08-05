@@ -1,0 +1,72 @@
+[package]
+name = "tower-rate-limiter"
+version = "0.1.0-alpha.0"
+edition = "2024"
+rust-version = "1.88"
+description = "Keyed fixed-window rate limiting middleware for Tower"
+readme = "README.md"
+keywords = ["rate-limit", "tower", "axum", "redis"]
+categories = ["web-programming::http-server"]
+homepage = "https://github.com/nivek-ph/tower-rate-limiter"
+repository = "https://github.com/nivek-ph/tower-rate-limiter"
+license = "MIT OR Apache-2.0"
+authors = ["nivek-ph <h499871809@gmail.com>"]
+include = [
+	"/src/**",
+	"/examples/**",
+	"/tests/**",
+	"/Cargo.toml",
+	"/README.md",
+	"/LICENSE",
+]
+
+[features]
+default = ["memory"]
+memory = []
+redis = ["dep:redis"]
+axum = ["dep:axum"]
+
+[dependencies]
+http = "1"
+pin-project-lite = "0.2"
+thiserror = "2"
+tower = { version = "0.5", features = ["util"] }
+
+# optional dependencies
+axum = { version = "0.8", optional = true }
+redis = { version = "1", default-features = false, features = [
+	"script",
+	"tokio-comp",
+], optional = true }
+
+[dev-dependencies]
+dotenvy = "0.15"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
+
+[[example]]
+name = "tower_memory"
+required-features = ["memory"]
+
+[[example]]
+name = "tower_dynamic"
+required-features = ["memory"]
+
+[[example]]
+name = "axum_memory"
+required-features = ["axum", "memory"]
+
+[[example]]
+name = "axum_x_forwarded_for"
+required-features = ["axum", "memory"]
+
+[[example]]
+name = "axum_redis"
+required-features = ["axum", "redis"]
+
+[[test]]
+name = "redis_store"
+required-features = ["redis"]
+
+[[test]]
+name = "axum"
+required-features = ["axum"]
