@@ -2,10 +2,10 @@
 
 use std::{fmt, sync::Arc, time::Duration};
 
-use super::charge::DefaultResponseFactory;
 use super::error::ConfigError;
 use super::layer::RateLimitLayer;
 use super::limit::LimitProvider;
+use super::response::DefaultResponseFactory;
 use super::store::{Store, StoreErrorAction};
 
 /// The minimum window duration allowed.

@@ -6,10 +6,10 @@ use http::{Request, Response};
 use tower::Service;
 
 use super::builder::RateLimitConfig;
-use super::charge::{ResponseFactory, ResponseReason};
 use super::future::RateLimitFuture;
 use super::key_extractor::KeyExtractor;
 use super::limit::LimitProvider;
+use super::response::ResponseFactory;
 use super::store::Store;
 
 /// Tower service produced by [`super::RateLimitLayer`].
@@ -52,9 +52,9 @@ where
         let key = match self.key_extractor.extract(&request) {
             Ok(key) => key,
             Err(error) => {
-                return RateLimitFuture::ready(
-                    self.response_factory
-                        .build(request, ResponseReason::Error(error)),
+                return RateLimitFuture::error(
+                    request,
+                    error,
                     inner,
                     self.store.clone(),
                     Arc::clone(&self.config),

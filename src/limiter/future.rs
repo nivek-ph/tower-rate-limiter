@@ -10,10 +10,8 @@ use std::{
 use http::{Request, Response};
 use pin_project_lite::pin_project;
 
-use super::charge::{
-    ChargeMetadata, ChargeOutcome, ResponseFactory, ResponseReason, append_context,
-    append_inner_response_headers, append_rate_limited_response_headers, make_key,
-};
+use super::charge::{ChargeMetadata, ChargeOutcome, append_context, make_key};
+use super::response::{MiddlewareResponse, ResponseFactory, append_inner_response_headers};
 use super::store::{Store, StoreErrorAction, Usage};
 use super::{RateLimitConfig, RateLimitError};
 
@@ -39,7 +37,7 @@ pin_project! {
             metadata: Option<ChargeMetadata>,
         },
         Ready {
-            response: Response<B>,
+            response: MiddlewareResponse<B>,
         },
         Done,
     }
@@ -82,15 +80,18 @@ impl<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
         }
     }
 
-    pub(crate) fn ready(
-        response: Response<B>,
+    pub(crate) fn error(
+        request: Request<B>,
+        error: RateLimitError,
         inner: Inner,
         store: S,
         config: Arc<RateLimitConfig>,
         factory: Factory,
     ) -> Self {
         Self {
-            state: FutureState::Ready { response },
+            state: FutureState::Ready {
+                response: MiddlewareResponse::error(request, error),
+            },
             inner,
             store,
             config,
@@ -128,8 +129,7 @@ where
 
                     match result {
                         Err(error) => {
-                            let response =
-                                this.factory.build(request, ResponseReason::Error(error));
+                            let response = MiddlewareResponse::error(request, error);
                             this.state
                                 .as_mut()
                                 .project_replace(FutureState::Ready { response });
@@ -167,8 +167,7 @@ where
                             });
                         }
                         Err(error) => {
-                            let response =
-                                this.factory.build(request, ResponseReason::Error(error));
+                            let response = MiddlewareResponse::error(request, error);
                             this.state
                                 .as_mut()
                                 .project_replace(FutureState::Ready { response });
@@ -183,10 +182,7 @@ where
                             });
                         }
                         Ok(ChargeOutcome::RateLimited(metadata)) => {
-                            let response = append_rate_limited_response_headers(
-                                this.factory.build(request, metadata.rate_limited_reason()),
-                                metadata,
-                            );
+                            let response = MiddlewareResponse::rate_limited(request, metadata);
                             this.state
                                 .as_mut()
                                 .project_replace(FutureState::Ready { response });
@@ -209,7 +205,7 @@ where
                     let StateProjectionReplace::Ready { response } = previous else {
                         unreachable!("rate-limit future state changed while returning response")
                     };
-                    return Poll::Ready(Ok(response));
+                    return Poll::Ready(Ok(response.finalize(this.factory)));
                 }
                 StateProjection::Done { .. } => {
                     panic!("rate-limit response future polled after completion")

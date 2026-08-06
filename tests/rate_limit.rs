@@ -36,6 +36,20 @@ impl KeyExtractor for StaticKey {
     }
 }
 
+#[derive(Clone, Copy)]
+struct FailingKey;
+
+impl KeyExtractor for FailingKey {
+    type Key = String;
+
+    fn extract<B>(&self, _request: &Request<B>) -> Result<Self::Key, RateLimitError> {
+        Err(RateLimitError::KeyUnavailable(
+            String::from("test_key_failed"),
+            String::from("key"),
+        ))
+    }
+}
+
 #[derive(Clone, Default)]
 struct FakeStore {
     counts: Arc<Mutex<HashMap<String, u64>>>,
@@ -376,6 +390,38 @@ fn custom_response_factory_decides_how_to_handle_limit_errors() {
     let response = call_service(&mut service, request()).expect("response");
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn custom_response_factory_decides_how_to_handle_key_errors() {
+    let mut service = RateLimitLayer::builder(FailingKey)
+        .with_store(SingleHitStore)
+        .response_factory(ReasonFactory)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    let response = call_service(&mut service, request()).expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn custom_response_factory_decides_how_to_handle_store_errors() {
+    let store = FakeStore {
+        fail: true,
+        ..FakeStore::default()
+    };
+    let mut service = RateLimitLayer::builder(StaticKey("caller"))
+        .with_store(store)
+        .response_factory(ReasonFactory)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    let response = call_service(&mut service, request()).expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_ACCEPTABLE);
 }
 
 #[derive(Clone)]

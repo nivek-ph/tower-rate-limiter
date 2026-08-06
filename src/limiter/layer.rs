@@ -5,8 +5,8 @@ use std::sync::Arc;
 use tower::Layer;
 
 use super::builder::RateLimitConfig;
-use super::charge::DefaultResponseFactory;
 use super::key_extractor::KeyExtractor;
+use super::response::DefaultResponseFactory;
 use super::service::RateLimitService;
 
 /// Layer that applies the [`RateLimitService`].
