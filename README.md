@@ -6,7 +6,7 @@ Each `RateLimitLayer` extracts a key from the request, resolves a quota, increme
 lets the rate-limit algorithm decide whether to call the ready inner service or return an immediate
 HTTP response.
 
-The crate is Tower-first. Axum and Redis are optional adapters, and the core works without Tokio.
+The crate is Tower-first. Axum and Redis are optional adapters.
 
 ## Features
 
@@ -193,8 +193,10 @@ cargo doc --all-features --no-deps
 cargo package --allow-dirty --offline
 ```
 
-The live Redis integration test is ignored by default. Run it explicitly with `REDIS_URL` and a
-reachable Redis server.
+Redis adapter unit tests live with `RedisStore` and cover transport-key formatting and Lua
+result parsing. The CI test job starts Redis and verifies atomic fixed-window behavior through
+the public `Store` interface. Local `cargo test --all-features` requires `REDIS_URL` to point to a
+reachable test Redis server.
 
 ## Scope
 
