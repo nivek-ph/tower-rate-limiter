@@ -1,4 +1,4 @@
-//! The core Store seam, scoped key construction, and returned usage.
+//! The core Store seam and returned usage.
 
 use std::{future::Future, time::Duration};
 
@@ -23,32 +23,6 @@ pub struct Usage {
     pub reset_after: Duration,
 }
 
-/// The fixed-window decision for one charged request.
-pub(crate) enum RateLimitDecision {
-    /// The charged request remains within its quota.
-    Allowed(Usage),
-    /// The charged request exceeds its quota.
-    RateLimited(Usage),
-}
-
-impl Usage {
-    /// Evaluate this charged usage against the resolved quota limit.
-    pub(crate) fn evaluate(self, limit: u64) -> Result<RateLimitDecision, RateLimitError> {
-        if self.used == 0 {
-            return Err(RateLimitError::StoreUnavailable(
-                String::from("invalid_usage"),
-                String::from("rate-limit store returned zero usage"),
-            ));
-        }
-
-        if self.used <= limit {
-            Ok(RateLimitDecision::Allowed(self))
-        } else {
-            Ok(RateLimitDecision::RateLimited(self))
-        }
-    }
-}
-
 /// An asynchronous fixed-window rate-limit store.
 pub trait Store: Clone + Send + Sync + 'static {
     /// The concrete future returned by [`Store::increment`].
@@ -56,13 +30,4 @@ pub trait Store: Clone + Send + Sync + 'static {
 
     /// Atomically increment `key` for the fixed `window`.
     fn increment(&self, key: &str, window: Duration) -> Self::Future;
-}
-
-/// Build the scoped key passed to a [`Store`].
-pub(crate) fn make_key(policy_name: &str, key: &str) -> String {
-    format!("{}:{}", escape_key_part(policy_name), escape_key_part(key),)
-}
-
-fn escape_key_part(value: &str) -> String {
-    value.replace('%', "%25").replace(':', "%3A")
 }

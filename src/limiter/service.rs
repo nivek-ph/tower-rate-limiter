@@ -6,10 +6,10 @@ use http::{Request, Response};
 use tower::Service;
 
 use super::builder::RateLimitConfig;
+use super::charge::{ResponseFactory, ResponseReason};
 use super::future::RateLimitFuture;
 use super::key_extractor::KeyExtractor;
 use super::limit::LimitProvider;
-use super::response::{ResponseFactory, ResponseReason};
 use super::store::Store;
 
 /// Tower service produced by [`super::RateLimitLayer`].
