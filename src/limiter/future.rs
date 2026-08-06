@@ -10,12 +10,12 @@ use std::{
 use http::{Request, Response};
 use pin_project_lite::pin_project;
 
-use super::response::append_rate_limit_headers;
-use super::store::{RateLimitDecision, Store, StoreErrorAction, Usage, make_key};
-use super::{
-    RateLimitConfig, RateLimitError, RateLimitMetadata, ResponseFactory, ResponseReason,
-    append_context,
+use super::charge::{
+    ChargeMetadata, ChargeOutcome, ResponseFactory, ResponseReason, append_context,
+    append_inner_response_headers, append_rate_limited_response_headers, make_key,
 };
+use super::store::{Store, StoreErrorAction, Usage};
+use super::{RateLimitConfig, RateLimitError};
 
 pin_project! {
     #[project = StateProjection]
@@ -36,7 +36,7 @@ pin_project! {
         Inner {
             #[pin]
             future: InnerFuture,
-            metadata: Option<RateLimitMetadata>,
+            metadata: Option<ChargeMetadata>,
         },
         Ready {
             response: Response<B>,
@@ -135,11 +135,11 @@ where
                                 .project_replace(FutureState::Ready { response });
                         }
                         Ok(limit) => {
-                            let mut store_key = make_key(&this.config.policy_name, &key);
+                            let mut key = make_key(&this.config.policy_name, &key);
                             if let Some(encoder) = this.config.key_encoding.as_ref() {
-                                store_key = encoder(&store_key);
+                                key = encoder(&key);
                             }
-                            let store_future = this.store.increment(&store_key, this.config.window);
+                            let store_future = this.store.increment(&key, this.config.window);
                             this.state.as_mut().project_replace(FutureState::Store {
                                 request,
                                 future: store_future,
@@ -155,9 +155,10 @@ where
                         unreachable!("rate-limit future state changed while polling Store")
                     };
 
-                    let decision = result.and_then(|state| state.evaluate(limit));
+                    let outcome =
+                        result.and_then(|usage| ChargeOutcome::evaluate(usage, limit, this.config));
 
-                    match decision {
+                    match outcome {
                         Err(_) if this.config.store_error_action == StoreErrorAction::Allow => {
                             let future = this.inner.call(request);
                             this.state.as_mut().project_replace(FutureState::Inner {
@@ -172,15 +173,7 @@ where
                                 .as_mut()
                                 .project_replace(FutureState::Ready { response });
                         }
-                        Ok(RateLimitDecision::Allowed(usage)) => {
-                            let metadata = RateLimitMetadata {
-                                policy_name: this.config.policy_name.clone(),
-                                limit,
-                                usage,
-                                window: this.config.window,
-                                emit_headers: this.config.emit_headers,
-                                rate_limited: false,
-                            };
+                        Ok(ChargeOutcome::Allowed(metadata)) => {
                             let mut request = request;
                             append_context(&mut request, &metadata);
                             let future = this.inner.call(request);
@@ -189,21 +182,10 @@ where
                                 metadata: Some(metadata),
                             });
                         }
-                        Ok(RateLimitDecision::RateLimited(usage)) => {
-                            let metadata = RateLimitMetadata {
-                                policy_name: this.config.policy_name.clone(),
-                                limit,
-                                usage,
-                                window: this.config.window,
-                                emit_headers: this.config.emit_headers,
-                                rate_limited: true,
-                            };
-                            let response = append_rate_limit_headers(
-                                this.factory.build(
-                                    request,
-                                    ResponseReason::RateLimited(metadata.limit, metadata.usage),
-                                ),
-                                Some(metadata),
+                        Ok(ChargeOutcome::RateLimited(metadata)) => {
+                            let response = append_rate_limited_response_headers(
+                                this.factory.build(request, metadata.rate_limited_reason()),
+                                metadata,
                             );
                             this.state
                                 .as_mut()
@@ -219,7 +201,7 @@ where
                         unreachable!("rate-limit future state changed while polling inner service")
                     };
                     return Poll::Ready(
-                        result.map(|response| append_rate_limit_headers(response, metadata)),
+                        result.map(|response| append_inner_response_headers(response, metadata)),
                     );
                 }
                 StateProjection::Ready { .. } => {

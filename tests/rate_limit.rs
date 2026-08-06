@@ -507,6 +507,54 @@ fn key_encoding_is_raw_by_default() {
 }
 
 #[test]
+fn scoped_key_escapes_colons_and_percents_before_store() {
+    let store = FakeStore::default();
+    let stored_keys = Arc::clone(&store.counts);
+    let mut service = RateLimitLayer::builder(StaticKey("c%d:e"))
+        .policy_name("a:b")
+        .window(Duration::from_secs(60))
+        .with_store(store)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    call_service(&mut service, request()).expect("allowed response");
+
+    assert!(
+        stored_keys
+            .lock()
+            .expect("store lock")
+            .contains_key("a%3Ab:c%25d%3Ae")
+    );
+}
+
+#[test]
+fn key_encoding_runs_on_escaped_scoped_key() {
+    let store = FakeStore::default();
+    let stored_keys = Arc::clone(&store.counts);
+    let mut service = RateLimitLayer::builder(StaticKey("c%d:e"))
+        .policy_name("a:b")
+        .window(Duration::from_secs(60))
+        .with_key_encoding(|key| {
+            assert_eq!(key, "a%3Ab:c%25d%3Ae");
+            format!("encoded:{key}")
+        })
+        .with_store(store)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    call_service(&mut service, request()).expect("allowed response");
+
+    assert!(
+        stored_keys
+            .lock()
+            .expect("store lock")
+            .contains_key("encoded:a%3Ab:c%25d%3Ae")
+    );
+}
+
+#[test]
 fn policy_names_isolate_usage_when_one_store_is_reused() {
     let store = FakeStore::default();
     let mut first = RateLimitLayer::builder(StaticKey("caller"))

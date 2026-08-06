@@ -1,4 +1,4 @@
-//! Request identity extraction for the rate-limiting layer.
+//! Request-facing client-key extraction interfaces.
 
 use std::{
     fmt::{Debug, Display},
@@ -8,7 +8,7 @@ use std::{
 
 use http::Request;
 
-use crate::RateLimitError;
+use super::error::RateLimitError;
 
 /// Extract a client key synchronously from a request.
 pub trait KeyExtractor: Clone + Send + Sync {

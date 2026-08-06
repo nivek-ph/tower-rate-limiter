@@ -6,16 +6,16 @@ Each `RateLimitLayer` extracts a key from the request, resolves a quota, increme
 lets the rate-limit algorithm decide whether to call the ready inner service or return an immediate
 HTTP response.
 
-The crate is Tower-first. Axum and Redis are optional adapters, and the core works without Tokio.
+The crate is Tower-first. Axum and Redis are optional adapters.
 
 ## Features
 
 ```toml
 [dependencies]
-tower-rate-limiter = "0.1"
+tower-rate-limiter = "0.1.0-alpha.0"
 
 # Optional adapters
-# tower-rate-limiter = { version = "0.1", features = ["axum", "redis"] }
+# tower-rate-limiter = { version = "0.1.0-alpha.0", features = ["axum", "redis"] }
 ```
 
 
@@ -29,15 +29,25 @@ tower-rate-limiter = "0.1"
 With `--no-default-features`, applications can provide their own `Store`, `KeyExtractor`, and
 `ResponseFactory` without pulling in Axum, Redis, or Tokio.
 
-## Tower
+## Quick start
 
 Start with `[tower_memory](examples/tower_memory.rs)`. It demonstrates a custom `KeyExtractor`,
 an explicit `MemoryStore`, a fixed quota, and Tower Layer composition. For request-derived quotas
 and downstream `RateLimitContext`, see `[tower_dynamic](examples/tower_dynamic.rs)`.
 
-The defaults are a limit of `1`, a 60-second fixed window, policy name `default-policy`, rejected
-Store failures, and enabled RateLimit response fields. Injecting a Store with `.with_store(...)` is
-always explicit.
+Builder defaults:
+
+
+| Setting          | Default          |
+| ---------------- | ---------------- |
+| Limit            | `1`              |
+| Window           | 60 seconds       |
+| Policy name      | `default-policy` |
+| Store errors     | Reject           |
+| RateLimit fields | Enabled          |
+
+
+The Store is always explicit via `.with_store(...)`.
 
 ## Request flow
 
@@ -74,33 +84,6 @@ path.
 The core scopes a key with the policy name before passing it to the Store. The window is passed
 separately. Layers that share a Store, policy name, and extracted key intentionally share usage;
 use different policy names for different policies or windows.
-
-## Axum
-
-See `[axum_memory](examples/axum_memory.rs)` for `ConnectInfo` setup and nested policy scopes. For
-a deployment-owned forwarding-header policy, see
-`[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)`.
-
-`IpKeyExtractor` reads a peer `SocketAddr` request extension and returns its `IpAddr`. With the
-`axum` feature, it also reads `ConnectInfo<SocketAddr>`. It does not interpret forwarding headers
-or define a trusted-proxy policy; applications own that policy.
-
-## Redis
-
-`RedisStore` accepts an established `redis::aio::MultiplexedConnection`. It does not parse URLs,
-open connections, or own connection shutdown.
-
-See `[axum_redis](examples/axum_redis.rs)` for connection setup, namespacing, a shared Store, and
-custom error responses.
-
-One Lua operation performs `INCR`, sets `PEXPIRE` only on the first increment, and returns the
-current usage plus `PTTL`. A missing or non-positive TTL is a Store error instead of an implicit
-repair. Redis adds the `rl:` marker and the optional namespace to the key it receives.
-
-Applications that need hashing or another representation can use
-`RateLimitBuilder::with_key_encoding` to transform the scoped key before it reaches any Store. The
-encoder must be deterministic, collision-resistant for the application's key space, non-blocking,
-and free of I/O.
 
 ## Errors and responses
 
@@ -149,20 +132,50 @@ policy_name, limit, used, remaining, reset_after
 
 Nested Layers append policies instead of overwriting existing context or response fields.
 
+## Axum
+
+See `[axum_memory](examples/axum_memory.rs)` for `ConnectInfo` setup and nested policy scopes. For
+a deployment-owned forwarding-header policy, see
+`[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)`.
+
+`IpKeyExtractor` reads a peer `SocketAddr` request extension and returns its `IpAddr`. With the
+`axum` feature, it also reads `ConnectInfo<SocketAddr>`. It does not interpret forwarding headers
+or define a trusted-proxy policy; applications own that policy.
+
+## Redis
+
+`RedisStore` accepts an established `redis::aio::MultiplexedConnection`. It does not parse URLs,
+open connections, or own connection shutdown.
+
+See `[axum_redis](examples/axum_redis.rs)` for connection setup, namespacing, a shared Store, and
+custom error responses.
+
+One Lua operation performs `INCR`, sets `PEXPIRE` only on the first increment, and returns the
+current usage plus `PTTL`. A missing or non-positive TTL is a Store error instead of an implicit
+repair. Redis adds the `rl:` marker and the optional namespace to the key it receives.
+
+Applications that need hashing or another representation can use
+`RateLimitBuilder::with_key_encoding` to transform the scoped key before it reaches any Store. The
+encoder must be deterministic, collision-resistant for the application's key space, non-blocking,
+and free of I/O.
+
 ## Examples
 
-- `[tower_memory](examples/tower_memory.rs)` — basic Tower service with `MemoryStore`
-- `[tower_dynamic](examples/tower_dynamic.rs)` — request-derived quota with `LimitProvider`
-- `[axum_memory](examples/axum_memory.rs)` — application and route-scoped Axum policies
-- `[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)` — application-owned forwarding-header trust policy
-- `[axum_redis](examples/axum_redis.rs)` — shared Redis Store and custom error responses
 
-Run an example with its required features:
+| Example                                                    | Shows                                            |
+| ---------------------------------------------------------- | ------------------------------------------------ |
+| `[tower_memory](examples/tower_memory.rs)`                 | Basic Tower service with `MemoryStore`           |
+| `[tower_dynamic](examples/tower_dynamic.rs)`               | Request-derived quota with `LimitProvider`       |
+| `[axum_memory](examples/axum_memory.rs)`                   | Application and route-scoped Axum policies       |
+| `[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)` | Application-owned forwarding-header trust policy |
+| `[axum_redis](examples/axum_redis.rs)`                     | Shared Redis Store and custom error responses    |
+
 
 ```text
 cargo run --example tower_memory --features memory
 cargo run --example tower_dynamic --features memory
 cargo run --example axum_memory --features axum,memory
+cargo run --example axum_x_forwarded_for --features axum,memory
 cargo run --example axum_redis --features axum,redis
 ```
 
@@ -180,8 +193,10 @@ cargo doc --all-features --no-deps
 cargo package --allow-dirty --offline
 ```
 
-The live Redis integration test is ignored by default. Run it explicitly with `REDIS_URL` and a
-reachable Redis server.
+Redis adapter unit tests live with `RedisStore` and cover transport-key formatting and Lua
+result parsing. The CI test job starts Redis and verifies atomic fixed-window behavior through
+the public `Store` interface. Local `cargo test --all-features` requires `REDIS_URL` to point to a
+reachable test Redis server.
 
 ## Scope
 

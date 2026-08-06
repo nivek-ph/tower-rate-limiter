@@ -1,12 +1,12 @@
-//! Fixed and request-derived quota limits.
+//! Fixed and request-derived quota-limit resolution.
 
 use std::future::{Future, Ready, ready};
 
 use http::Request;
 
-use super::RateLimitError;
+use super::error::RateLimitError;
 
-/// A quota provider that can resolve a fixed or request-derived limit asynchronously.
+/// Resolve a fixed or request-derived quota limit asynchronously.
 pub trait LimitProvider: Clone + Send + Sync + 'static {
     /// The concrete future returned by [`LimitProvider::limit`].
     type Future: Future<Output = Result<u64, RateLimitError>> + Send + 'static;
@@ -15,7 +15,7 @@ pub trait LimitProvider: Clone + Send + Sync + 'static {
     fn limit<B>(&self, request: &Request<B>) -> Self::Future;
 }
 
-/// Treat a raw `u64` as a fixed quota provider for the builder's `.limit(...)` method.
+/// Treat a raw `u64` as the fixed provider used by the builder's `.limit(...)` method.
 impl LimitProvider for u64 {
     type Future = Ready<Result<u64, RateLimitError>>;
 

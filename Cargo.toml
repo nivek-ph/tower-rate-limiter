@@ -1,8 +1,8 @@
 [package]
 name = "tower-rate-limiter"
-version = "0.1.0-alpha.0"
+version = "0.1.0"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.96.0"
 description = "Keyed fixed-window rate limiting middleware for Tower"
 readme = "README.md"
 keywords = ["rate-limit", "tower", "axum", "redis"]

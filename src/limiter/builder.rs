@@ -2,10 +2,10 @@
 
 use std::{fmt, sync::Arc, time::Duration};
 
+use super::charge::DefaultResponseFactory;
 use super::error::ConfigError;
 use super::layer::RateLimitLayer;
 use super::limit::LimitProvider;
-use super::response::DefaultResponseFactory;
 use super::store::{Store, StoreErrorAction};
 
 /// The minimum window duration allowed.
@@ -14,17 +14,13 @@ const MINIMUM_WINDOW: Duration = Duration::from_millis(1);
 /// A callback to encode the scoped key before passing it to the [`Store`].
 pub(crate) type KeyEncoding = Box<dyn Fn(&str) -> String + Send + Sync>;
 
-/// Builder for a [`RateLimitLayer`] with compile-time store/provider/factory types.
+/// Builder for a rate-limit layer with compile-time store/resolver/factory types.
 pub struct RateLimitBuilder<K, S = (), P = u64, F = DefaultResponseFactory> {
     key_extractor: K,
     store: S,
     limit_provider: P,
     response_factory: F,
-    policy_name: String,
-    window: Duration,
-    key_encoding: Option<KeyEncoding>,
-    store_error_action: StoreErrorAction,
-    emit_headers: bool,
+    config: RateLimitConfig,
 }
 
 impl<K> RateLimitBuilder<K> {
@@ -34,11 +30,13 @@ impl<K> RateLimitBuilder<K> {
             store: (),
             limit_provider: 1,
             response_factory: DefaultResponseFactory,
-            policy_name: String::from("default-policy"),
-            window: Duration::from_secs(60),
-            key_encoding: None,
-            store_error_action: StoreErrorAction::default(),
-            emit_headers: true,
+            config: RateLimitConfig {
+                policy_name: String::from("default-policy"),
+                window: Duration::from_secs(60),
+                key_encoding: None,
+                store_error_action: StoreErrorAction::default(),
+                emit_headers: true,
+            },
         }
     }
 }
@@ -46,60 +44,86 @@ impl<K> RateLimitBuilder<K> {
 impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
     /// Inject the rate-limit store and update the builder's store type state.
     pub fn with_store<S2>(self, store: S2) -> RateLimitBuilder<K, S2, P, F> {
+        let Self {
+            key_extractor,
+            limit_provider,
+            response_factory,
+            config,
+            ..
+        } = self;
         RateLimitBuilder {
-            key_extractor: self.key_extractor,
+            key_extractor,
             store,
-            limit_provider: self.limit_provider,
-            response_factory: self.response_factory,
-            policy_name: self.policy_name,
-            window: self.window,
-            key_encoding: self.key_encoding,
-            store_error_action: self.store_error_action,
-            emit_headers: self.emit_headers,
+            limit_provider,
+            response_factory,
+            config,
         }
     }
 
     /// Set a fixed quota limit and update the provider type state.
     pub fn limit(self, limit: u64) -> RateLimitBuilder<K, S, u64, F> {
+        let Self {
+            key_extractor,
+            store,
+            response_factory,
+            config,
+            ..
+        } = self;
         RateLimitBuilder {
-            key_extractor: self.key_extractor,
-            store: self.store,
+            key_extractor,
+            store,
             limit_provider: limit,
-            response_factory: self.response_factory,
-            policy_name: self.policy_name,
-            window: self.window,
-            key_encoding: self.key_encoding,
-            store_error_action: self.store_error_action,
-            emit_headers: self.emit_headers,
+            response_factory,
+            config,
         }
     }
 
     /// Replace the fixed provider with a custom asynchronous limit provider.
     pub fn limit_provider<P2>(self, limit_provider: P2) -> RateLimitBuilder<K, S, P2, F> {
+        let Self {
+            key_extractor,
+            store,
+            response_factory,
+            config,
+            ..
+        } = self;
         RateLimitBuilder {
-            key_extractor: self.key_extractor,
-            store: self.store,
+            key_extractor,
+            store,
             limit_provider,
-            response_factory: self.response_factory,
-            policy_name: self.policy_name,
-            window: self.window,
-            key_encoding: self.key_encoding,
-            store_error_action: self.store_error_action,
-            emit_headers: self.emit_headers,
+            response_factory,
+            config,
+        }
+    }
+
+    /// Replace the response factory and update its type state.
+    pub fn response_factory<F2>(self, response_factory: F2) -> RateLimitBuilder<K, S, P, F2> {
+        let Self {
+            key_extractor,
+            store,
+            limit_provider,
+            config,
+            ..
+        } = self;
+        RateLimitBuilder {
+            key_extractor,
+            store,
+            limit_provider,
+            response_factory,
+            config,
         }
     }
 
     /// Set the fixed-window duration.
-    pub fn window(self, window: Duration) -> Self {
-        Self { window, ..self }
+    pub fn window(mut self, window: Duration) -> Self {
+        self.config.window = window;
+        self
     }
 
     /// Set the stable policy identifier used in the scoped key and response metadata.
-    pub fn policy_name(self, policy_name: impl Into<String>) -> Self {
-        Self {
-            policy_name: policy_name.into(),
-            ..self
-        }
+    pub fn policy_name(mut self, policy_name: impl Into<String>) -> Self {
+        self.config.policy_name = policy_name.into();
+        self
     }
 
     /// Encode the scoped key before passing it to the [`Store`].
@@ -107,48 +131,34 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
     /// The callback runs in the middleware future's polling path. It must be deterministic,
     /// non-blocking, free of I/O, collision-resistant for the caller's key space, and non-panicking.
     /// Without this method, the complete scoped key is passed to the Store unchanged.
-    pub fn with_key_encoding<E>(self, encoder: E) -> Self
+    pub fn with_key_encoding<E>(mut self, encoder: E) -> Self
     where
         E: Fn(&str) -> String + Send + Sync + 'static,
     {
-        Self {
-            key_encoding: Some(Box::new(encoder)),
-            ..self
-        }
+        self.config.key_encoding = Some(Box::new(encoder));
+        self
     }
 
     /// Select the action to take when the Store returns an error.
     pub fn on_store_error(mut self, action: StoreErrorAction) -> Self {
-        self.store_error_action = action;
+        self.config.store_error_action = action;
         self
     }
 
     /// Enable or disable the two IETF RateLimit response fields.
     pub fn emit_headers(mut self, emit: bool) -> Self {
-        self.emit_headers = emit;
+        self.config.emit_headers = emit;
         self
     }
 
-    /// Replace the response factory and update its type state.
-    pub fn response_factory<F2>(self, response_factory: F2) -> RateLimitBuilder<K, S, P, F2> {
-        RateLimitBuilder {
-            key_extractor: self.key_extractor,
-            store: self.store,
-            limit_provider: self.limit_provider,
-            response_factory,
-            policy_name: self.policy_name,
-            window: self.window,
-            key_encoding: self.key_encoding,
-            store_error_action: self.store_error_action,
-            emit_headers: self.emit_headers,
-        }
-    }
-
     fn validate(&self) -> Result<(), ConfigError> {
-        if self.window < MINIMUM_WINDOW {
-            return Err(ConfigError::WindowTooShort(self.window, MINIMUM_WINDOW));
+        if self.config.window < MINIMUM_WINDOW {
+            return Err(ConfigError::WindowTooShort(
+                self.config.window,
+                MINIMUM_WINDOW,
+            ));
         }
-        if self.policy_name.is_empty() {
+        if self.config.policy_name.is_empty() {
             return Err(ConfigError::EmptyPolicyName);
         }
         Ok(())
@@ -175,13 +185,7 @@ where
             store: self.store,
             limit_provider: self.limit_provider,
             response_factory: self.response_factory,
-            config: Arc::new(RateLimitConfig {
-                policy_name: self.policy_name,
-                window: self.window,
-                key_encoding: self.key_encoding,
-                store_error_action: self.store_error_action,
-                emit_headers: self.emit_headers,
-            }),
+            config: Arc::new(self.config),
         })
     }
 }
@@ -196,9 +200,8 @@ pub(crate) struct RateLimitConfig {
 }
 
 impl fmt::Debug for RateLimitConfig {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("RateLimitConfig")
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RateLimitConfig")
             .field("policy_name", &self.policy_name)
             .field("window", &self.window)
             .field(
