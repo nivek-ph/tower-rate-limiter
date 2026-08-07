@@ -16,10 +16,7 @@ tower-rate-limiter = { version = "0.1", features = ["axum", "memory"] }
 information when serving the router:
 
 ```rust
-axum::serve(
-    listener,
-    app.into_make_service_with_connect_info::<SocketAddr>(),
-).await?;
+{{#include ../examples/axum_memory.rs:serve}}
 ```
 
 See the complete [`axum_memory` example](https://github.com/nivek-ph/tower-rate-limiter/blob/main/examples/axum_memory.rs)
