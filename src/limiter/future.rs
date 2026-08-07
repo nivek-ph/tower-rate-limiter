@@ -12,7 +12,7 @@ use pin_project_lite::pin_project;
 
 use super::charge::{ChargeMetadata, ChargeOutcome, append_context, make_key};
 use super::response::{MiddlewareResponse, ResponseFactory, append_inner_response_headers};
-use super::store::{Store, StoreErrorAction, Usage};
+use super::store::{Store, StoreFailureMode, Usage};
 use super::{RateLimitConfig, RateLimitError};
 
 pin_project! {
@@ -159,7 +159,7 @@ where
                         result.and_then(|usage| ChargeOutcome::evaluate(usage, limit, this.config));
 
                     match outcome {
-                        Err(_) if this.config.store_error_action == StoreErrorAction::Allow => {
+                        Err(_) if this.config.store_failure_mode == StoreFailureMode::Allow => {
                             let future = this.inner.call(request);
                             this.state.as_mut().project_replace(FutureState::Inner {
                                 future,

@@ -106,8 +106,8 @@ default `ResponseFactory` produces an empty response body with these statuses:
 
 
 Applications can implement `ResponseFactory` to choose their own body, status, headers, and
-logging. Store failures reject by default. Select `StoreErrorAction::Allow` through
-`RateLimitBuilder::on_store_error` to call the inner service without claiming quota metadata when
+logging. Store failures reject by default. Select `StoreFailureMode::Allow` through
+`RateLimitBuilder::store_failure_mode` to call the inner service without claiming quota metadata when
 the Store fails.
 
 Key and limit failures never fail open.

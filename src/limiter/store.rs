@@ -4,9 +4,9 @@ use std::{future::Future, time::Duration};
 
 use super::RateLimitError;
 
-/// The action to take when the rate-limit store fails.
+/// The operating mode to use when the rate-limit store fails.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum StoreErrorAction {
+pub enum StoreFailureMode {
     /// Build an error response without calling the inner service.
     #[default]
     Reject,

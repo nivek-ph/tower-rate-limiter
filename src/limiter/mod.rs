@@ -24,4 +24,4 @@ pub use layer::RateLimitLayer;
 pub use limit::LimitProvider;
 pub use response::{DefaultResponseFactory, ResponseFactory, ResponseReason};
 pub use service::RateLimitService;
-pub use store::{Store, StoreErrorAction, Usage};
+pub use store::{Store, StoreFailureMode, Usage};

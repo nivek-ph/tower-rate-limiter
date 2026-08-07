@@ -260,7 +260,7 @@ fn store_error_is_rejected_or_allowed_as_configured() {
     let inner_calls = Arc::clone(&inner.calls);
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(1)
-        .on_store_error(tower_rate_limiter::StoreErrorAction::Allow)
+        .store_failure_mode(tower_rate_limiter::StoreFailureMode::Allow)
         .with_store(store)
         .build()
         .expect("valid layer")
@@ -292,7 +292,7 @@ fn allow_passes_through_when_store_usage_is_invalid() {
     let inner_calls = Arc::clone(&inner.calls);
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(1)
-        .on_store_error(tower_rate_limiter::StoreErrorAction::Allow)
+        .store_failure_mode(tower_rate_limiter::StoreFailureMode::Allow)
         .with_store(store)
         .build()
         .expect("valid layer")

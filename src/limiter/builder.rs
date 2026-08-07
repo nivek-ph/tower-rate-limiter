@@ -6,7 +6,7 @@ use super::error::ConfigError;
 use super::layer::RateLimitLayer;
 use super::limit::LimitProvider;
 use super::response::DefaultResponseFactory;
-use super::store::{Store, StoreErrorAction};
+use super::store::{Store, StoreFailureMode};
 
 /// The minimum window duration allowed.
 const MINIMUM_WINDOW: Duration = Duration::from_millis(1);
@@ -34,7 +34,7 @@ impl<K> RateLimitBuilder<K> {
                 policy_name: String::from("default-policy"),
                 window: Duration::from_secs(60),
                 key_encoding: None,
-                store_error_action: StoreErrorAction::default(),
+                store_failure_mode: StoreFailureMode::default(),
                 emit_headers: true,
             },
         }
@@ -139,9 +139,9 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
         self
     }
 
-    /// Select the action to take when the Store returns an error.
-    pub fn on_store_error(mut self, action: StoreErrorAction) -> Self {
-        self.config.store_error_action = action;
+    /// Select the mode to use when the Store fails.
+    pub fn store_failure_mode(mut self, mode: StoreFailureMode) -> Self {
+        self.config.store_failure_mode = mode;
         self
     }
 
@@ -195,7 +195,7 @@ pub(crate) struct RateLimitConfig {
     pub(crate) policy_name: String,
     pub(crate) window: Duration,
     pub(crate) key_encoding: Option<KeyEncoding>,
-    pub(crate) store_error_action: StoreErrorAction,
+    pub(crate) store_failure_mode: StoreFailureMode,
     pub(crate) emit_headers: bool,
 }
 
@@ -208,7 +208,7 @@ impl fmt::Debug for RateLimitConfig {
                 "key_encoding",
                 &self.key_encoding.as_ref().map(|_| "<callback>"),
             )
-            .field("store_error_action", &self.store_error_action)
+            .field("store_failure_mode", &self.store_failure_mode)
             .field("emit_headers", &self.emit_headers)
             .finish()
     }
