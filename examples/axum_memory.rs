@@ -16,7 +16,7 @@ fn is_allowlisted(request: &Request<()>, allowlist: &HashSet<IpAddr>) -> bool {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let ip = "127.0.0.2".parse::<IpAddr>().unwrap();
+    let ip = "127.0.0.1".parse::<IpAddr>().unwrap();
     let allowlist = Arc::new(HashSet::from([ip]));
 
     let key_extractor = IpKeyExtractor::new();
