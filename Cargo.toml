@@ -21,6 +21,9 @@ include = [
 	"/LICENSE-MIT",
 ]
 
+[package.metadata.docs.rs]
+all-features = true
+
 [features]
 default = ["memory"]
 memory = []

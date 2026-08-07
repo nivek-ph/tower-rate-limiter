@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 520" role="img" aria-labelledby="title desc">
+  <title id="title">Axum allowlist and nested policy flow</title>
+  <desc id="desc">Allowlisted clients bypass both global and auth policies. Other clients are charged by the global policy and, on auth routes, by the auth policy.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#57606a"/>
+    </marker>
+    <style>
+      text { font-family: Arial, sans-serif; fill: #24292f; font-size: 16px; }
+      .small { font-size: 14px; fill: #57606a; }
+      .box { fill: #f6f8fa; stroke: #57606a; stroke-width: 2; rx: 10; }
+      .decision { fill: #fff8c5; stroke: #9a6700; stroke-width: 2; }
+      .success { fill: #dafbe1; stroke: #1a7f37; stroke-width: 2; rx: 10; }
+      .policy { fill: #ddf4ff; stroke: #0969da; stroke-width: 2; rx: 10; }
+      .line { fill: none; stroke: #57606a; stroke-width: 2; marker-end: url(#arrow); }
+      @media (prefers-color-scheme: dark) {
+        text { fill: #e6edf3; }
+        .small { fill: #9da7b1; }
+        .box { fill: #161b22; stroke: #8b949e; }
+        .decision { fill: #3b2e00; stroke: #d29922; }
+        .success { fill: #12261e; stroke: #3fb950; }
+        .policy { fill: #102b3c; stroke: #58a6ff; }
+        .line { stroke: #8b949e; }
+      }
+    </style>
+  </defs>
+
+  <rect class="box" x="30" y="55" width="130" height="60"/>
+  <text x="95" y="91" text-anchor="middle">Request</text>
+
+  <path class="decision" d="M 270 35 L 370 85 L 270 135 L 170 85 Z"/>
+  <text x="270" y="81" text-anchor="middle">peer allowlisted?</text>
+  <text class="small" x="270" y="103" text-anchor="middle">ConnectInfo IP</text>
+  <path class="line" d="M 160 85 H 170"/>
+
+  <rect class="success" x="180" y="205" width="180" height="70"/>
+  <text x="270" y="233" text-anchor="middle">bypass both Layers</text>
+  <text class="small" x="270" y="256" text-anchor="middle">no charge or metadata</text>
+  <path class="line" d="M 270 135 V 205"/>
+  <text class="small" x="282" y="171">yes</text>
+
+  <rect class="success" x="180" y="350" width="180" height="70"/>
+  <text x="270" y="378" text-anchor="middle">handler response</text>
+  <text class="small" x="270" y="401" text-anchor="middle">no RateLimit fields</text>
+  <path class="line" d="M 270 275 V 350"/>
+
+  <rect class="policy" x="425" y="50" width="165" height="70"/>
+  <text x="507" y="78" text-anchor="middle">global-limit</text>
+  <text class="small" x="507" y="101" text-anchor="middle">charge every route</text>
+  <path class="line" d="M 370 85 H 425"/>
+  <text class="small" x="397" y="73" text-anchor="middle">no</text>
+
+  <path class="decision" d="M 700 35 L 800 85 L 700 135 L 600 85 Z"/>
+  <text x="700" y="81" text-anchor="middle">under /auth?</text>
+  <text class="small" x="700" y="103" text-anchor="middle">Layer scope</text>
+  <path class="line" d="M 590 85 H 600"/>
+
+  <rect class="policy" x="835" y="50" width="175" height="70"/>
+  <text x="922" y="78" text-anchor="middle">auth-limit</text>
+  <text class="small" x="922" y="101" text-anchor="middle">charge auth routes</text>
+  <path class="line" d="M 800 85 H 835"/>
+  <text class="small" x="818" y="73" text-anchor="middle">yes</text>
+
+  <rect class="success" x="835" y="205" width="175" height="70"/>
+  <text x="922" y="233" text-anchor="middle">auth handler</text>
+  <text class="small" x="922" y="256" text-anchor="middle">if both allow</text>
+  <path class="line" d="M 922 120 V 205"/>
+
+  <rect class="success" x="810" y="350" width="200" height="70"/>
+  <text x="910" y="378" text-anchor="middle">handler response</text>
+  <text class="small" x="910" y="401" text-anchor="middle">auth + global fields</text>
+  <path class="line" d="M 922 275 V 350"/>
+
+  <rect class="success" x="555" y="205" width="180" height="70"/>
+  <text x="645" y="233" text-anchor="middle">other handler</text>
+  <text class="small" x="645" y="256" text-anchor="middle">if global allows</text>
+  <path class="line" d="M 700 135 V 165 C 700 185 670 190 655 205"/>
+  <text class="small" x="711" y="166">no</text>
+
+  <rect class="success" x="545" y="350" width="200" height="70"/>
+  <text x="645" y="378" text-anchor="middle">handler response</text>
+  <text class="small" x="645" y="401" text-anchor="middle">global field only</text>
+  <path class="line" d="M 645 275 V 350"/>
+</svg>

@@ -9,7 +9,7 @@ src = "docs"
 site-url = "/tower-rate-limiter/"
 default-theme = "light"
 preferred-dark-theme = "navy"
-additional-css = ["docs/custom.css"]
+
 git-repository-url = "https://github.com/nivek-ph/tower-rate-limiter"
 git-repository-icon = "fab-github"
 edit-url-template = "https://github.com/nivek-ph/tower-rate-limiter/edit/main/docs/{path}"
