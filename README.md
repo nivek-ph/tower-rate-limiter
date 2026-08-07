@@ -12,10 +12,10 @@ The crate is Tower-first. Axum and Redis are optional adapters.
 
 ```toml
 [dependencies]
-tower-rate-limiter = "0.1.0-alpha.0"
+tower-rate-limiter = "0.1"
 
 # Optional adapters
-# tower-rate-limiter = { version = "0.1.0-alpha.0", features = ["axum", "redis"] }
+# tower-rate-limiter = { version = "0.1", features = ["axum", "redis"] }
 ```
 
 
@@ -31,9 +31,9 @@ With `--no-default-features`, applications can provide their own `Store`, `KeyEx
 
 ## Quick start
 
-Start with `[tower_memory](examples/tower_memory.rs)`. It demonstrates a custom `KeyExtractor`,
+Start with [`tower_memory`](examples/tower_memory.rs). It demonstrates a custom `KeyExtractor`,
 an explicit `MemoryStore`, a fixed quota, and Tower Layer composition. For request-derived quotas
-and downstream `RateLimitContext`, see `[tower_dynamic](examples/tower_dynamic.rs)`.
+and downstream `RateLimitContext`, see [`tower_dynamic`](examples/tower_dynamic.rs).
 
 Builder defaults:
 
@@ -100,9 +100,9 @@ default `ResponseFactory` produces an empty response body with these statuses:
 | Outcome            | Status                      |
 | ------------------ | --------------------------- |
 | `RateLimited`      | `429 Too Many Requests`     |
-| `Key`   | `500 Internal Server Error` |
-| `Quota` | `500 Internal Server Error` |
-| `Store` | `503 Service Unavailable`   |
+| `Key`               | `500 Internal Server Error` |
+| `Quota`             | `500 Internal Server Error` |
+| `Store`             | `503 Service Unavailable`   |
 
 
 Applications can implement `ResponseFactory` to choose their own body, status, headers, and
@@ -178,9 +178,9 @@ Nested Layers append policies instead of overwriting existing context or respons
 
 ## Axum
 
-See `[axum_memory](examples/axum_memory.rs)` for `ConnectInfo` setup and nested policy scopes. For
+See [`axum_memory`](examples/axum_memory.rs) for `ConnectInfo` setup and nested policy scopes. For
 a deployment-owned forwarding-header policy, see
-`[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)`.
+[`axum_x_forwarded_for`](examples/axum_x_forwarded_for.rs).
 
 `IpKeyExtractor` reads a peer `SocketAddr` request extension and returns its `IpAddr`. With the
 `axum` feature, it also reads `ConnectInfo<SocketAddr>`. It does not interpret forwarding headers
@@ -191,7 +191,7 @@ or define a trusted-proxy policy; applications own that policy.
 `RedisStore` accepts an established `redis::aio::MultiplexedConnection`. It does not parse URLs,
 open connections, or own connection shutdown.
 
-See `[axum_redis](examples/axum_redis.rs)` for connection setup, namespacing, a shared Store, and
+See [`axum_redis`](examples/axum_redis.rs) for connection setup, namespacing, a shared Store, and
 custom error responses.
 
 One Lua operation performs `INCR`, sets `PEXPIRE` only on the first increment, and returns the
@@ -208,11 +208,11 @@ and free of I/O.
 
 | Example                                                    | Shows                                            |
 | ---------------------------------------------------------- | ------------------------------------------------ |
-| `[tower_memory](examples/tower_memory.rs)`                 | Basic Tower service with `MemoryStore`           |
-| `[tower_dynamic](examples/tower_dynamic.rs)`               | Request-derived quota with `LimitProvider`       |
-| `[axum_memory](examples/axum_memory.rs)`                   | Application and route-scoped Axum policies       |
-| `[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)` | Application-owned forwarding-header trust policy |
-| `[axum_redis](examples/axum_redis.rs)`                     | Shared Redis Store and custom error responses    |
+| [`tower_memory`](examples/tower_memory.rs)                 | Basic Tower service with `MemoryStore`           |
+| [`tower_dynamic`](examples/tower_dynamic.rs)               | Request-derived quota with `LimitProvider`       |
+| [`axum_memory`](examples/axum_memory.rs)                   | Application and route-scoped Axum policies       |
+| [`axum_x_forwarded_for`](examples/axum_x_forwarded_for.rs) | Application-owned forwarding-header trust policy |
+| [`axum_redis`](examples/axum_redis.rs)                     | Shared Redis Store and custom error responses    |
 
 
 ```text
