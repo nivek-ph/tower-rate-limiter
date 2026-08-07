@@ -93,16 +93,6 @@ pub(super) enum MiddlewareResponse<B> {
 }
 
 impl<B> MiddlewareResponse<B> {
-    /// Retain an error for common finalization.
-    pub(super) fn error(request: Request<B>, error: RateLimitError) -> Self {
-        Self::Error(request, error)
-    }
-
-    /// Retain a rate-limited metadata for common finalization.
-    pub(super) fn rate_limited(request: Request<B>, metadata: ChargeMetadata) -> Self {
-        Self::RateLimited(request, metadata)
-    }
-
     /// Build and decorate the final HTTP response through one middleware path.
     pub(super) fn finalize<F>(self, factory: &F) -> Response<B>
     where

@@ -3,7 +3,10 @@ use std::{
     convert::Infallible,
     future::{Future, Ready, ready},
     pin::pin,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::{Context, Poll, Waker},
     time::Duration,
 };
@@ -53,16 +56,17 @@ impl KeyExtractor for FailingKey {
 #[derive(Clone, Default)]
 struct FakeStore {
     counts: Arc<Mutex<HashMap<String, u64>>>,
-    calls: Arc<std::sync::atomic::AtomicUsize>,
+    calls: Arc<AtomicUsize>,
     fail: bool,
     zero_usage: bool,
+    reset_after: Option<Duration>,
 }
 
 impl Store for FakeStore {
     type Future = Ready<Result<Usage, RateLimitError>>;
 
     fn increment(&self, key: &str, window: Duration) -> Self::Future {
-        self.calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.calls.fetch_add(1, Ordering::Relaxed);
         if self.fail {
             return ready(Err(RateLimitError::Store(
                 String::from("test_store_failed"),
@@ -80,7 +84,7 @@ impl Store for FakeStore {
         *count += 1;
         ready(Ok(Usage {
             used: *count,
-            reset_after: window,
+            reset_after: self.reset_after.unwrap_or(window),
         }))
     }
 }
@@ -112,7 +116,7 @@ impl std::error::Error for TestError {}
 
 #[derive(Clone, Default)]
 struct OkService {
-    calls: Arc<std::sync::atomic::AtomicUsize>,
+    calls: Arc<AtomicUsize>,
     bodies: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
@@ -126,7 +130,7 @@ impl Service<Request<Vec<u8>>> for OkService {
     }
 
     fn call(&mut self, request: Request<Vec<u8>>) -> Self::Future {
-        self.calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.calls.fetch_add(1, Ordering::Relaxed);
         self.bodies
             .lock()
             .expect("body capture lock")
@@ -174,6 +178,18 @@ where
     })
 }
 
+fn call_status<S>(service: &mut S) -> StatusCode
+where
+    S: Service<Request<Vec<u8>>, Response = Response<Vec<u8>>>,
+    S::Error: std::fmt::Debug,
+{
+    call_service(service, request()).expect("response").status()
+}
+
+fn assert_header<B>(response: &Response<B>, name: &str, value: &str) {
+    assert_eq!(response.headers().get(name).expect("response header"), value);
+}
+
 fn layer(store: FakeStore, limit: u64) -> RateLimitLayer<StaticKey, FakeStore> {
     RateLimitLayer::builder(StaticKey("caller"))
         .limit(limit)
@@ -189,14 +205,10 @@ fn first_limit_requests_pass_and_next_request_is_rate_limited() {
     let calls = Arc::clone(&store.calls);
     let mut service = layer(store, 2).layer(OkService::default());
 
-    let first = call_service(&mut service, request()).expect("first");
-    assert_eq!(first.status(), StatusCode::OK);
-    let second = call_service(&mut service, request()).expect("second");
-    assert_eq!(second.status(), StatusCode::OK);
-    let blocked = call_service(&mut service, request()).expect("blocked");
-
-    assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 3);
+    assert_eq!(call_status(&mut service), StatusCode::OK);
+    assert_eq!(call_status(&mut service), StatusCode::OK);
+    assert_eq!(call_status(&mut service), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(calls.load(Ordering::Relaxed), 3);
 }
 
 #[test]
@@ -220,8 +232,8 @@ fn skip_predicate_bypasses_the_complete_rate_limit_path() {
     let response = call_service(&mut service, bypassed).expect("bypassed response");
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(store_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
-    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(store_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(inner_calls.load(Ordering::Relaxed), 1);
     assert_eq!(
         inner_bodies.lock().expect("body capture lock").as_slice(),
         [b"payload".to_vec()]
@@ -232,8 +244,8 @@ fn skip_predicate_bypasses_the_complete_rate_limit_path() {
     let response = call_service(&mut service, request()).expect("enforced response");
 
     assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(store_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
-    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(store_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(inner_calls.load(Ordering::Relaxed), 1);
 }
 
 #[test]
@@ -248,11 +260,9 @@ fn limit_failures_do_not_call_store_or_inner() {
         .build()
         .expect("valid layer")
         .layer(inner);
-    let response = call_service(&mut service, request()).expect("response");
-
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
-    assert_eq!(store_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
-    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+    assert_eq!(call_status(&mut service), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(store_calls.load(Ordering::Relaxed), 0);
+    assert_eq!(inner_calls.load(Ordering::Relaxed), 0);
 }
 
 #[test]
@@ -265,9 +275,7 @@ fn empty_client_keys_are_passed_to_the_store() {
         .expect("valid layer")
         .layer(OkService::default());
 
-    let response = call_service(&mut service, request()).expect("response");
-
-    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(call_status(&mut service), StatusCode::OK);
     assert!(stored_keys.lock().expect("store lock").contains_key("default-policy:"));
 }
 
@@ -280,9 +288,8 @@ fn store_error_is_rejected_or_allowed_as_configured() {
     let inner = OkService::default();
     let inner_calls = Arc::clone(&inner.calls);
     let mut service = layer(store, 1).layer(inner);
-    let response = call_service(&mut service, request()).expect("response");
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
-    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+    assert_eq!(call_status(&mut service), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(inner_calls.load(Ordering::Relaxed), 0);
 
     let store = FakeStore {
         fail: true,
@@ -299,7 +306,7 @@ fn store_error_is_rejected_or_allowed_as_configured() {
         .layer(inner);
     let response = call_service(&mut service, request()).expect("response");
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(inner_calls.load(Ordering::Relaxed), 1);
     assert!(response.extensions().get::<RateLimitContext>().is_none());
 }
 
@@ -310,8 +317,7 @@ fn zero_usage_is_store_unavailable_by_default() {
         ..FakeStore::default()
     };
     let mut service = layer(store, 1).layer(OkService::default());
-    let response = call_service(&mut service, request()).expect("response");
-    assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(call_status(&mut service), StatusCode::SERVICE_UNAVAILABLE);
 }
 
 #[test]
@@ -330,10 +336,8 @@ fn allow_passes_through_when_store_usage_is_invalid() {
         .expect("valid layer")
         .layer(inner);
 
-    let response = call_service(&mut service, request()).expect("response");
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(call_status(&mut service), StatusCode::OK);
+    assert_eq!(inner_calls.load(Ordering::Relaxed), 1);
 }
 
 #[derive(Clone, Copy)]
@@ -361,20 +365,6 @@ fn inner_error_type_is_preserved() {
 }
 
 #[derive(Clone, Copy)]
-struct SingleHitStore;
-
-impl Store for SingleHitStore {
-    type Future = Ready<Result<Usage, RateLimitError>>;
-
-    fn increment(&self, _key: &str, window: Duration) -> Self::Future {
-        ready(Ok(Usage {
-            used: 1,
-            reset_after: window,
-        }))
-    }
-}
-
-#[derive(Clone, Copy)]
 struct ReasonFactory;
 
 impl ResponseFactory<Vec<u8>> for ReasonFactory {
@@ -397,42 +387,37 @@ impl ResponseFactory<Vec<u8>> for ReasonFactory {
 fn custom_response_factory_receives_rate_limited_reason() {
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(0)
-        .with_store(SingleHitStore)
+        .with_store(FakeStore::default())
         .response_factory(ReasonFactory)
         .build()
         .expect("valid layer")
         .layer(OkService::default());
-    let response = call_service(&mut service, request()).expect("response");
-    assert_eq!(response.status(), StatusCode::IM_A_TEAPOT);
+    assert_eq!(call_status(&mut service), StatusCode::IM_A_TEAPOT);
 }
 
 #[test]
 fn custom_response_factory_decides_how_to_handle_limit_errors() {
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit_provider(FailingLimit)
-        .with_store(SingleHitStore)
+        .with_store(FakeStore::default())
         .response_factory(ReasonFactory)
         .build()
         .expect("valid layer")
         .layer(OkService::default());
 
-    let response = call_service(&mut service, request()).expect("response");
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(call_status(&mut service), StatusCode::BAD_REQUEST);
 }
 
 #[test]
 fn custom_response_factory_decides_how_to_handle_key_errors() {
     let mut service = RateLimitLayer::builder(FailingKey)
-        .with_store(SingleHitStore)
+        .with_store(FakeStore::default())
         .response_factory(ReasonFactory)
         .build()
         .expect("valid layer")
         .layer(OkService::default());
 
-    let response = call_service(&mut service, request()).expect("response");
-
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    assert_eq!(call_status(&mut service), StatusCode::BAD_REQUEST);
 }
 
 #[test]
@@ -448,49 +433,41 @@ fn custom_response_factory_decides_how_to_handle_store_errors() {
         .expect("valid layer")
         .layer(OkService::default());
 
-    let response = call_service(&mut service, request()).expect("response");
-
-    assert_eq!(response.status(), StatusCode::NOT_ACCEPTABLE);
+    assert_eq!(call_status(&mut service), StatusCode::NOT_ACCEPTABLE);
 }
 
 #[derive(Clone)]
-struct OrderedKey {
-    events: Arc<Mutex<Vec<&'static str>>>,
+struct Ordered(Arc<Mutex<Vec<&'static str>>>);
+
+impl Ordered {
+    fn record(&self, event: &'static str) {
+        self.0.lock().expect("order lock").push(event);
+    }
 }
 
-impl KeyExtractor for OrderedKey {
+impl KeyExtractor for Ordered {
     type Key = String;
 
     fn extract<B>(&self, _request: &Request<B>) -> Result<Self::Key, RateLimitError> {
-        self.events.lock().expect("order lock").push("key");
+        self.record("key");
         Ok(String::from("caller"))
     }
 }
 
-#[derive(Clone)]
-struct OrderedLimit {
-    events: Arc<Mutex<Vec<&'static str>>>,
-}
-
-impl LimitProvider for OrderedLimit {
+impl LimitProvider for Ordered {
     type Future = Ready<Result<u64, RateLimitError>>;
 
     fn limit<B>(&self, _request: &Request<B>) -> Self::Future {
-        self.events.lock().expect("order lock").push("limit");
+        self.record("limit");
         ready(Ok(1))
     }
 }
 
-#[derive(Clone)]
-struct OrderedStore {
-    events: Arc<Mutex<Vec<&'static str>>>,
-}
-
-impl Store for OrderedStore {
+impl Store for Ordered {
     type Future = Ready<Result<Usage, RateLimitError>>;
 
     fn increment(&self, _key: &str, window: Duration) -> Self::Future {
-        self.events.lock().expect("order lock").push("store");
+        self.record("store");
         ready(Ok(Usage {
             used: 1,
             reset_after: window,
@@ -501,18 +478,13 @@ impl Store for OrderedStore {
 #[test]
 fn request_flow_resolves_key_then_limit_then_store() {
     let events = Arc::new(Mutex::new(Vec::new()));
-    let mut service = RateLimitLayer::builder(OrderedKey {
-        events: Arc::clone(&events),
-    })
-    .limit_provider(OrderedLimit {
-        events: Arc::clone(&events),
-    })
-    .with_store(OrderedStore {
-        events: Arc::clone(&events),
-    })
-    .build()
-    .expect("valid layer")
-    .layer(OkService::default());
+    let ordered = Ordered(Arc::clone(&events));
+    let mut service = RateLimitLayer::builder(ordered.clone())
+        .limit_provider(ordered.clone())
+        .with_store(ordered)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
 
     call_service(&mut service, request()).expect("allowed response");
     assert_eq!(*events.lock().expect("order lock"), vec!["key", "limit", "store"]);
@@ -524,23 +496,20 @@ fn key_encoder_runs_after_key_scoping_before_store() {
     let store = FakeStore::default();
     let stored_keys = Arc::clone(&store.counts);
     let encoding_events = Arc::clone(&events);
-    let mut service = RateLimitLayer::builder(OrderedKey {
-        events: Arc::clone(&events),
-    })
-    .limit_provider(OrderedLimit {
-        events: Arc::clone(&events),
-    })
-    .policy_name("api")
-    .window(Duration::from_secs(60))
-    .with_key_encoder(move |key| {
-        encoding_events.lock().expect("order lock").push("encoding");
-        assert_eq!(key, "api:caller");
-        format!("encoded:{key}")
-    })
-    .with_store(store)
-    .build()
-    .expect("valid layer")
-    .layer(OkService::default());
+    let ordered = Ordered(Arc::clone(&events));
+    let mut service = RateLimitLayer::builder(ordered.clone())
+        .limit_provider(ordered)
+        .policy_name("api")
+        .window(Duration::from_secs(60))
+        .with_key_encoder(move |key| {
+            encoding_events.lock().expect("order lock").push("encoding");
+            assert_eq!(key, "api:caller");
+            format!("encoded:{key}")
+        })
+        .with_store(store)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
 
     call_service(&mut service, request()).expect("allowed response");
 
@@ -631,18 +600,9 @@ fn policy_names_isolate_usage_when_one_store_is_reused() {
         .expect("valid layer")
         .layer(OkService::default());
 
-    assert_eq!(
-        call_service(&mut first, request()).expect("first").status(),
-        StatusCode::OK
-    );
-    assert_eq!(
-        call_service(&mut first, request()).expect("first blocked").status(),
-        StatusCode::TOO_MANY_REQUESTS
-    );
-    assert_eq!(
-        call_service(&mut second, request()).expect("second").status(),
-        StatusCode::OK
-    );
+    assert_eq!(call_status(&mut first), StatusCode::OK);
+    assert_eq!(call_status(&mut first), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(call_status(&mut second), StatusCode::OK);
 }
 
 #[test]
@@ -665,24 +625,10 @@ fn same_policy_shares_usage_when_windows_differ() {
         .expect("valid layer")
         .layer(OkService::default());
 
-    assert_eq!(
-        call_service(&mut short, request()).expect("short").status(),
-        StatusCode::OK
-    );
-    assert_eq!(
-        call_service(&mut long, request())
-            .expect("long shares the usage")
-            .status(),
-        StatusCode::TOO_MANY_REQUESTS
-    );
-    assert_eq!(
-        call_service(&mut short, request()).expect("short blocked").status(),
-        StatusCode::TOO_MANY_REQUESTS
-    );
-    assert_eq!(
-        call_service(&mut long, request()).expect("long blocked").status(),
-        StatusCode::TOO_MANY_REQUESTS
-    );
+    assert_eq!(call_status(&mut short), StatusCode::OK);
+    assert_eq!(call_status(&mut long), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(call_status(&mut short), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(call_status(&mut long), StatusCode::TOO_MANY_REQUESTS);
 }
 
 struct DelayedLimitFuture {
@@ -723,10 +669,7 @@ fn asynchronous_limit_provider_is_awaited_before_store() {
         .expect("valid layer")
         .layer(OkService::default());
 
-    assert_eq!(
-        call_service(&mut service, request()).expect("response").status(),
-        StatusCode::OK
-    );
+    assert_eq!(call_status(&mut service), StatusCode::OK);
 }
 
 #[test]
@@ -736,14 +679,8 @@ fn allowed_response_has_draft_eleven_fields_and_context() {
     let mut service = layer(FakeStore::default(), 2).layer(inner);
     let response = call_service(&mut service, request()).expect("allowed response");
 
-    assert_eq!(
-        response.headers().get("RateLimit-Policy").unwrap(),
-        "\"default-policy\";q=2;w=60"
-    );
-    assert_eq!(
-        response.headers().get("RateLimit").unwrap(),
-        "\"default-policy\";r=1;t=60"
-    );
+    assert_header(&response, "RateLimit-Policy", "\"default-policy\";q=2;w=60");
+    assert_header(&response, "RateLimit", "\"default-policy\";r=1;t=60");
     assert!(response.headers().get("Retry-After").is_none());
     let context = contexts
         .lock()
@@ -763,15 +700,9 @@ fn blocked_response_has_rate_fields_and_retry_after() {
     let response = call_service(&mut service, request()).expect("blocked response");
 
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(
-        response.headers().get("RateLimit-Policy").unwrap(),
-        "\"default-policy\";q=1;w=60"
-    );
-    assert_eq!(
-        response.headers().get("RateLimit").unwrap(),
-        "\"default-policy\";r=0;t=60"
-    );
-    assert_eq!(response.headers().get("Retry-After").unwrap(), "60");
+    assert_header(&response, "RateLimit-Policy", "\"default-policy\";q=1;w=60");
+    assert_header(&response, "RateLimit", "\"default-policy\";r=0;t=60");
+    assert_header(&response, "Retry-After", "60");
 }
 
 #[test]
@@ -833,11 +764,8 @@ fn draft7_fields_use_the_legacy_dictionary_format() {
 
     let response = call_service(&mut service, request()).expect("allowed response");
 
-    assert_eq!(response.headers().get("RateLimit-Policy").unwrap(), "1;w=60");
-    assert_eq!(
-        response.headers().get("RateLimit").unwrap(),
-        "limit=1, remaining=0, reset=60"
-    );
+    assert_header(&response, "RateLimit-Policy", "1;w=60");
+    assert_header(&response, "RateLimit", "limit=1, remaining=0, reset=60");
 }
 
 #[test]
@@ -854,7 +782,7 @@ fn disabling_fields_keeps_retry_after_on_blocked_responses() {
 
     assert!(response.headers().get("RateLimit").is_none());
     assert!(response.headers().get("RateLimit-Policy").is_none());
-    assert_eq!(response.headers().get("Retry-After").unwrap(), "60");
+    assert_header(&response, "Retry-After", "60");
 }
 
 #[test]
@@ -869,33 +797,27 @@ fn active_subsecond_durations_round_up_to_one_second() {
     let _ = call_service(&mut service, request()).expect("allowed response");
     let response = call_service(&mut service, request()).expect("blocked response");
 
-    assert_eq!(
-        response.headers().get("RateLimit-Policy").unwrap(),
-        "\"default-policy\";q=1;w=1"
-    );
-    assert_eq!(
-        response.headers().get("RateLimit").unwrap(),
-        "\"default-policy\";r=0;t=1"
-    );
-    assert_eq!(response.headers().get("Retry-After").unwrap(), "1");
+    assert_header(&response, "RateLimit-Policy", "\"default-policy\";q=1;w=1");
+    assert_header(&response, "RateLimit", "\"default-policy\";r=0;t=1");
+    assert_header(&response, "Retry-After", "1");
 }
 
 #[test]
 fn zero_reset_duration_rounds_up_to_one_second() {
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(1)
-        .with_store(ZeroResetStore::default())
+        .with_store(FakeStore {
+            reset_after: Some(Duration::ZERO),
+            ..FakeStore::default()
+        })
         .build()
         .expect("valid layer")
         .layer(OkService::default());
     let _ = call_service(&mut service, request()).expect("allowed response");
     let response = call_service(&mut service, request()).expect("blocked response");
 
-    assert_eq!(
-        response.headers().get("RateLimit").unwrap(),
-        "\"default-policy\";r=0;t=1"
-    );
-    assert_eq!(response.headers().get("Retry-After").unwrap(), "1");
+    assert_header(&response, "RateLimit", "\"default-policy\";r=0;t=1");
+    assert_header(&response, "Retry-After", "1");
 }
 
 #[test]
@@ -913,25 +835,10 @@ fn unavailable_responses_do_not_claim_quota_metadata() {
     assert!(response.headers().get("Retry-After").is_none());
 }
 
-#[derive(Clone, Default)]
-struct ZeroResetStore(Arc<std::sync::atomic::AtomicUsize>);
-
-impl Store for ZeroResetStore {
-    type Future = Ready<Result<Usage, RateLimitError>>;
-
-    fn increment(&self, _key: &str, _window: Duration) -> Self::Future {
-        let used = self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-        ready(Ok(Usage {
-            used: used as u64,
-            reset_after: Duration::ZERO,
-        }))
-    }
-}
-
 #[derive(Debug)]
 struct ReadinessService {
     id: usize,
-    next_id: Arc<std::sync::atomic::AtomicUsize>,
+    next_id: Arc<AtomicUsize>,
     events: Arc<Mutex<Vec<(usize, &'static str)>>>,
 }
 
@@ -940,7 +847,7 @@ type ReadinessEvents = Arc<Mutex<Vec<(usize, &'static str)>>>;
 impl ReadinessService {
     fn new() -> (Self, ReadinessEvents) {
         let events = ReadinessEvents::default();
-        let next_id = Arc::new(std::sync::atomic::AtomicUsize::new(1));
+        let next_id = Arc::new(AtomicUsize::new(1));
         (
             Self {
                 id: 0,
@@ -955,7 +862,7 @@ impl ReadinessService {
 impl Clone for ReadinessService {
     fn clone(&self) -> Self {
         Self {
-            id: self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            id: self.next_id.fetch_add(1, Ordering::Relaxed),
             next_id: Arc::clone(&self.next_id),
             events: Arc::clone(&self.events),
         }
@@ -980,13 +887,13 @@ impl Service<Request<Vec<u8>>> for ReadinessService {
 
 #[derive(Clone)]
 struct DropTrackingService {
-    calls: Arc<std::sync::atomic::AtomicUsize>,
-    drops: Arc<std::sync::atomic::AtomicUsize>,
+    calls: Arc<AtomicUsize>,
+    drops: Arc<AtomicUsize>,
 }
 
 impl Drop for DropTrackingService {
     fn drop(&mut self) {
-        self.drops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.drops.fetch_add(1, Ordering::Relaxed);
     }
 }
 
@@ -1000,7 +907,7 @@ impl Service<Request<Vec<u8>>> for DropTrackingService {
     }
 
     fn call(&mut self, _request: Request<Vec<u8>>) -> Self::Future {
-        self.calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.calls.fetch_add(1, Ordering::Relaxed);
         ready(Ok(Response::new(Vec::new())))
     }
 }
@@ -1020,15 +927,15 @@ fn allowed_request_calls_the_exact_inner_instance_reserved_by_poll_ready() {
 
 #[test]
 fn rejected_request_drops_the_reserved_inner_without_calling_it() {
-    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
-    let drops = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let calls = Arc::new(AtomicUsize::new(0));
+    let drops = Arc::new(AtomicUsize::new(0));
     let inner = DropTrackingService {
         calls: Arc::clone(&calls),
         drops: Arc::clone(&drops),
     };
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(0)
-        .with_store(SingleHitStore)
+        .with_store(FakeStore::default())
         .build()
         .expect("valid layer")
         .layer(inner);
@@ -1036,6 +943,6 @@ fn rejected_request_drops_the_reserved_inner_without_calling_it() {
     let response = call_service(&mut service, request()).expect("blocked response");
 
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
-    assert_eq!(calls.load(std::sync::atomic::Ordering::Relaxed), 0);
-    assert_eq!(drops.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+    assert_eq!(drops.load(Ordering::Relaxed), 1);
 }

@@ -88,7 +88,7 @@ impl<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
     ) -> Self {
         Self {
             state: FutureState::Ready {
-                response: MiddlewareResponse::error(request, error),
+                response: MiddlewareResponse::Error(request, error),
             },
             inner,
             store,
@@ -147,7 +147,7 @@ where
 
                     match result {
                         Err(error) => {
-                            let response = MiddlewareResponse::error(request, error);
+                            let response = MiddlewareResponse::Error(request, error);
                             this.state.as_mut().project_replace(FutureState::Ready { response });
                         },
                         Ok(limit) => {
@@ -181,7 +181,7 @@ where
                                 .project_replace(FutureState::Inner { future, metadata: None });
                         },
                         Err(error) => {
-                            let response = MiddlewareResponse::error(request, error);
+                            let response = MiddlewareResponse::Error(request, error);
                             this.state.as_mut().project_replace(FutureState::Ready { response });
                         },
                         Ok(ChargeOutcome::Allowed(metadata)) => {
@@ -194,7 +194,7 @@ where
                             });
                         },
                         Ok(ChargeOutcome::RateLimited(metadata)) => {
-                            let response = MiddlewareResponse::rate_limited(request, metadata);
+                            let response = MiddlewareResponse::RateLimited(request, metadata);
                             this.state.as_mut().project_replace(FutureState::Ready { response });
                         },
                     }
