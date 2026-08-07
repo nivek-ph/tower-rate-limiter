@@ -10,9 +10,7 @@ use std::time::Duration;
 
 use http::Request;
 
-use super::RateLimitConfig;
-use super::error::RateLimitError;
-use super::store::Usage;
+use super::{RateLimitConfig, error::RateLimitError, store::Usage};
 
 /// One policy's rate-limit state exposed to a downstream handler.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -39,9 +37,7 @@ pub struct RateLimitContext {
 impl RateLimitContext {
     /// Construct an empty context.
     pub const fn new() -> Self {
-        Self {
-            policies: Vec::new(),
-        }
+        Self { policies: Vec::new() }
     }
 
     /// Borrow all policy entries in composition order.
@@ -75,9 +71,14 @@ impl ChargeMetadata {
             policy_name: self.policy_name.clone(),
             limit: self.limit,
             used: self.usage.used,
-            remaining: self.limit.saturating_sub(self.usage.used),
+            remaining: self.remaining(),
             reset_after: self.usage.reset_after,
         }
+    }
+
+    /// the remaining quota.
+    fn remaining(&self) -> u64 {
+        self.limit.saturating_sub(self.usage.used)
     }
 }
 
@@ -91,13 +92,9 @@ pub(super) enum ChargeOutcome {
 
 impl ChargeOutcome {
     /// Evaluate charged usage against the resolved quota limit.
-    pub(super) fn evaluate(
-        usage: Usage,
-        limit: u64,
-        config: &RateLimitConfig,
-    ) -> Result<Self, RateLimitError> {
+    pub(super) fn evaluate(usage: Usage, limit: u64, config: &RateLimitConfig) -> Result<Self, RateLimitError> {
         if usage.used == 0 {
-            return Err(RateLimitError::StoreUnavailable(
+            return Err(RateLimitError::Store(
                 String::from("invalid_usage"),
                 String::from("rate-limit store returned zero usage"),
             ));
@@ -120,11 +117,7 @@ impl ChargeOutcome {
 
 /// Build the scoped Key passed toward a [`super::Store`].
 pub(super) fn make_key(policy_name: &str, client_key: &str) -> String {
-    format!(
-        "{}:{}",
-        escape_key_part(policy_name),
-        escape_key_part(client_key)
-    )
+    format!("{}:{}", escape_key_part(policy_name), escape_key_part(client_key))
 }
 
 fn escape_key_part(value: &str) -> String {

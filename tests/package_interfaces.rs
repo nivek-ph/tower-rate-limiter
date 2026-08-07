@@ -6,8 +6,8 @@ use std::{
 
 use http::{Request, Response};
 use tower_rate_limiter::{
-    ConfigError, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitError, RateLimitFuture,
-    RateLimitLayer, ResponseFactory, ResponseReason, Store, Usage,
+    ConfigError, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitError, RateLimitFuture, RateLimitLayer,
+    ResponseFactory, ResponseReason, Store, Usage,
 };
 
 #[derive(Clone)]
@@ -53,14 +53,14 @@ fn rate_limit_future_is_publicly_nameable() {
 
 #[test]
 fn rate_limit_errors_expose_a_stable_code_and_message() {
-    let error = RateLimitError::StoreUnavailable(
+    let error = RateLimitError::Store(
         String::from("redis_unavailable"),
         String::from("usage increment failed"),
     );
 
     assert!(matches!(
         error,
-        RateLimitError::StoreUnavailable(code, message)
+        RateLimitError::Store(code, message)
             if code == "redis_unavailable" && message == "usage increment failed"
     ));
 }
@@ -118,8 +118,5 @@ fn ip_key_extractor_reads_a_tower_socket_addr_extension() {
     let mut request = Request::new(());
     request.extensions_mut().insert(address);
 
-    assert_eq!(
-        IpKeyExtractor::new().extract(&request).unwrap(),
-        address.ip()
-    );
+    assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), address.ip());
 }

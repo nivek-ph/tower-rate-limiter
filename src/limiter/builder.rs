@@ -2,17 +2,39 @@
 
 use std::{fmt, sync::Arc, time::Duration};
 
-use super::error::ConfigError;
-use super::layer::RateLimitLayer;
-use super::limit::LimitProvider;
-use super::response::DefaultResponseFactory;
-use super::store::{Store, StoreFailureMode};
+use http::Request;
+
+use super::{
+    error::ConfigError,
+    layer::RateLimitLayer,
+    limit::LimitProvider,
+    response::DefaultResponseFactory,
+    store::{Store, StoreFailureMode},
+};
 
 /// The minimum window duration allowed.
 const MINIMUM_WINDOW: Duration = Duration::from_millis(1);
 
 /// A callback to encode the scoped key before passing it to the [`Store`].
 pub(crate) type KeyEncoding = Box<dyn Fn(&str) -> String + Send + Sync>;
+
+/// A callback that decides whether a request bypasses rate limiting.
+pub(crate) type SkipPredicate = Box<dyn Fn(&Request<()>) -> bool + Send + Sync>;
+
+/// Check if the request should be skipped based on the skip predicate.
+pub(crate) fn check_skip_predicate<B>(predicate: Option<&SkipPredicate>, request: Request<B>) -> (bool, Request<B>) {
+    let Some(predicate) = predicate else {
+        return (false, request);
+    };
+
+    // This is a hack to get the request head. maybe there's a better way to do this.
+    let (parts, body) = request.into_parts();
+    let request_head = Request::from_parts(parts, ());
+    let should_skip = predicate(&request_head);
+    let (parts, ()) = request_head.into_parts();
+
+    (should_skip, Request::from_parts(parts, body))
+}
 
 /// Builder for a rate-limit layer with compile-time store/resolver/factory types.
 pub struct RateLimitBuilder<K, S = (), P = u64, F = DefaultResponseFactory> {
@@ -34,6 +56,7 @@ impl<K> RateLimitBuilder<K> {
                 policy_name: String::from("default-policy"),
                 window: Duration::from_secs(60),
                 key_encoding: None,
+                skip_predicate: None,
                 store_failure_mode: StoreFailureMode::default(),
                 emit_headers: true,
             },
@@ -129,13 +152,28 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
     /// Encode the scoped key before passing it to the [`Store`].
     ///
     /// The callback runs in the middleware future's polling path. It must be deterministic,
-    /// non-blocking, free of I/O, collision-resistant for the caller's key space, and non-panicking.
-    /// Without this method, the complete scoped key is passed to the Store unchanged.
+    /// non-blocking, free of I/O, collision-resistant for the caller's key space, and
+    /// non-panicking. Without this method, the complete scoped key is passed to the Store
+    /// unchanged.
     pub fn with_key_encoding<E>(mut self, encoder: E) -> Self
     where
         E: Fn(&str) -> String + Send + Sync + 'static,
     {
         self.config.key_encoding = Some(Box::new(encoder));
+        self
+    }
+
+    /// Bypass rate limiting when `predicate` returns `true` for the request.
+    ///
+    /// The predicate receives the request head and extensions with a unit body. It runs
+    /// synchronously before client-key extraction and must be non-blocking, free of I/O, and
+    /// non-panicking. A bypassed request calls the inner service without resolving a limit,
+    /// charging the Store, or adding rate-limit context or response fields.
+    pub fn skip<Predicate>(mut self, predicate: Predicate) -> Self
+    where
+        Predicate: Fn(&Request<()>) -> bool + Send + Sync + 'static,
+    {
+        self.config.skip_predicate = Some(Box::new(predicate));
         self
     }
 
@@ -153,10 +191,7 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
 
     fn validate(&self) -> Result<(), ConfigError> {
         if self.config.window < MINIMUM_WINDOW {
-            return Err(ConfigError::WindowTooShort(
-                self.config.window,
-                MINIMUM_WINDOW,
-            ));
+            return Err(ConfigError::WindowTooShort(self.config.window, MINIMUM_WINDOW));
         }
         if self.config.policy_name.is_empty() {
             return Err(ConfigError::EmptyPolicyName);
@@ -195,6 +230,7 @@ pub(crate) struct RateLimitConfig {
     pub(crate) policy_name: String,
     pub(crate) window: Duration,
     pub(crate) key_encoding: Option<KeyEncoding>,
+    pub(crate) skip_predicate: Option<SkipPredicate>,
     pub(crate) store_failure_mode: StoreFailureMode,
     pub(crate) emit_headers: bool,
 }
@@ -204,10 +240,8 @@ impl fmt::Debug for RateLimitConfig {
         f.debug_struct("RateLimitConfig")
             .field("policy_name", &self.policy_name)
             .field("window", &self.window)
-            .field(
-                "key_encoding",
-                &self.key_encoding.as_ref().map(|_| "<callback>"),
-            )
+            .field("key_encoding", &self.key_encoding.as_ref().map(|_| "<callback>"))
+            .field("skip_predicate", &self.skip_predicate.as_ref().map(|_| "<callback>"))
             .field("store_failure_mode", &self.store_failure_mode)
             .field("emit_headers", &self.emit_headers)
             .finish()

@@ -61,11 +61,7 @@ fn concurrent_increments_are_not_lost() {
         let final_usage = increment(&store, "concurrent", Duration::from_secs(60));
 
         assert_eq!(final_usage.used, total + 1);
-        assert!(
-            usages
-                .iter()
-                .all(|usage| final_usage.reset_after <= usage.reset_after)
-        );
+        assert!(usages.iter().all(|usage| final_usage.reset_after <= usage.reset_after));
     });
 }
 
@@ -86,29 +82,18 @@ fn expired_usage_restarts_at_one_with_a_new_window() {
 fn different_scopes_remain_independent_in_one_store() {
     let store = MemoryStore::new();
 
-    assert_eq!(
-        increment(&store, "policy-a-window-60", Duration::from_secs(60)).used,
-        1
-    );
-    assert_eq!(
-        increment(&store, "policy-b-window-60", Duration::from_secs(60)).used,
-        1
-    );
-    assert_eq!(
-        increment(&store, "policy-a-window-30", Duration::from_secs(30)).used,
-        1
-    );
+    assert_eq!(increment(&store, "policy-a-window-60", Duration::from_secs(60)).used, 1);
+    assert_eq!(increment(&store, "policy-b-window-60", Duration::from_secs(60)).used, 1);
+    assert_eq!(increment(&store, "policy-a-window-30", Duration::from_secs(30)).used, 1);
 }
 
 #[test]
 fn an_unrepresentable_window_is_reported_as_a_store_error() {
-    let result = MemoryStore::new()
-        .increment("huge", Duration::MAX)
-        .into_inner();
+    let result = MemoryStore::new().increment("huge", Duration::MAX).into_inner();
 
     assert!(matches!(
         result,
-        Err(RateLimitError::StoreUnavailable(code, message))
+        Err(RateLimitError::Store(code, message))
             if code == "memory_window_out_of_range"
                 && message == "window cannot be represented by the process clock"
     ));

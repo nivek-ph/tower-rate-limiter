@@ -68,14 +68,13 @@ impl Store for RedisStore {
             let script = Script::new(INCREMENT_SCRIPT);
             let mut invocation = script.key(redis_key);
             invocation.arg(window_millis);
-            let result: (i64, i64) = invocation.invoke_async(&mut connection).await.map_err(
-                |error: redis::RedisError| {
-                    RateLimitError::StoreUnavailable(
-                        String::from("redis_command_failed"),
-                        error.to_string(),
-                    )
-                },
-            )?;
+            let result: (i64, i64) =
+                invocation
+                    .invoke_async(&mut connection)
+                    .await
+                    .map_err(|error: redis::RedisError| {
+                        RateLimitError::Store(String::from("redis_command_failed"), error.to_string())
+                    })?;
             usage_from_script_result(result)
         })
     }
@@ -85,17 +84,15 @@ impl Store for RedisStore {
 ///
 /// Redis reports `-1` for a persistent key and `-2` for a missing key. Both, as well as a
 /// zero TTL, are errors because the fixed window cannot be trusted without a positive TTL.
-fn usage_from_script_result(
-    (used, reset_after_millis): (i64, i64),
-) -> Result<Usage, RateLimitError> {
+fn usage_from_script_result((used, reset_after_millis): (i64, i64)) -> Result<Usage, RateLimitError> {
     if used < 1 {
-        return Err(RateLimitError::StoreUnavailable(
+        return Err(RateLimitError::Store(
             String::from("redis_invalid_count"),
             format!("Redis returned invalid usage {used}"),
         ));
     }
     if reset_after_millis <= 0 {
-        return Err(RateLimitError::StoreUnavailable(
+        return Err(RateLimitError::Store(
             String::from("redis_invalid_pttl"),
             format!("Redis key has invalid PTTL {reset_after_millis}"),
         ));
@@ -141,14 +138,14 @@ impl Future for RedisStoreFuture {
 
 fn checked_window_millis(window: Duration) -> Result<i64, RateLimitError> {
     if window.is_zero() {
-        return Err(RateLimitError::StoreUnavailable(
+        return Err(RateLimitError::Store(
             String::from("redis_invalid_window"),
             String::from("Redis window must be non-zero"),
         ));
     }
     let window_millis = window.as_millis();
     if window_millis > i64::MAX as u128 {
-        return Err(RateLimitError::StoreUnavailable(
+        return Err(RateLimitError::Store(
             String::from("redis_window_too_large"),
             String::from("Redis window is too large"),
         ));
@@ -187,15 +184,15 @@ mod tests {
 
         assert!(matches!(
             usage_from_script_result((0, 1_500)),
-            Err(RateLimitError::StoreUnavailable(code, _)) if code == "redis_invalid_count"
+            Err(RateLimitError::Store(code, _)) if code == "redis_invalid_count"
         ));
         assert!(matches!(
             usage_from_script_result((4, 0)),
-            Err(RateLimitError::StoreUnavailable(code, _)) if code == "redis_invalid_pttl"
+            Err(RateLimitError::Store(code, _)) if code == "redis_invalid_pttl"
         ));
         assert!(matches!(
             usage_from_script_result((4, -1)),
-            Err(RateLimitError::StoreUnavailable(code, _)) if code == "redis_invalid_pttl"
+            Err(RateLimitError::Store(code, _)) if code == "redis_invalid_pttl"
         ));
     }
 
@@ -206,17 +203,14 @@ mod tests {
             format_redis_key(Some("tenant"), "policy:client"),
             "tenant:rl:policy:client"
         );
-        assert_eq!(
-            format_redis_key(Some(""), "policy:client"),
-            "rl:policy:client"
-        );
+        assert_eq!(format_redis_key(Some(""), "policy:client"), "rl:policy:client");
     }
 
     #[test]
     fn window_must_be_representable_as_positive_redis_milliseconds() {
         assert!(matches!(
             checked_window_millis(Duration::ZERO),
-            Err(RateLimitError::StoreUnavailable(code, _)) if code == "redis_invalid_window"
+            Err(RateLimitError::Store(code, _)) if code == "redis_invalid_window"
         ));
         assert_eq!(
             checked_window_millis(Duration::from_millis(1)).expect("one millisecond"),

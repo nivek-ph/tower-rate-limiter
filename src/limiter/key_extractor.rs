@@ -57,7 +57,7 @@ impl KeyExtractor for IpKeyExtractor {
         maybe_connect_info(request)
             .or_else(|| maybe_socket_addr(request))
             .ok_or_else(|| {
-                RateLimitError::KeyUnavailable(
+                RateLimitError::Key(
                     String::from("peer_ip_unavailable"),
                     String::from("request extensions do not contain a peer socket address"),
                 )

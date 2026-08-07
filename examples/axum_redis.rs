@@ -3,8 +3,7 @@ use std::{env, error::Error, net::SocketAddr, time::Duration};
 use axum::{Router, routing::get};
 use http::{Request, Response, StatusCode};
 use tower_rate_limiter::{
-    IpKeyExtractor, KeyExtractor, RateLimitError, RateLimitLayer, RedisStore, ResponseFactory,
-    ResponseReason,
+    IpKeyExtractor, KeyExtractor, RateLimitError, RateLimitLayer, RedisStore, ResponseFactory, ResponseReason,
 };
 
 /// Demo extractor: read a client key from `X-User-Id`.
@@ -32,14 +31,14 @@ impl KeyExtractor for UserIdKeyExtractor {
 }
 
 fn missing_user_id() -> RateLimitError {
-    RateLimitError::KeyUnavailable(
+    RateLimitError::Key(
         String::from("missing_user_id"),
         String::from("x-user-id header is required"),
     )
 }
 
 fn invalid_user_id() -> RateLimitError {
-    RateLimitError::KeyUnavailable(
+    RateLimitError::Key(
         String::from("invalid_user_id"),
         String::from("x-user-id must be valid UTF-8"),
     )
@@ -55,16 +54,10 @@ where
 {
     fn build(&self, _request: Request<B>, reason: ResponseReason) -> Response<B> {
         let status = match &reason {
-            ResponseReason::Error(RateLimitError::KeyUnavailable(code, _))
-                if code == "missing_user_id" =>
-            {
+            ResponseReason::Error(RateLimitError::Key(code, _)) if code == "missing_user_id" => {
                 StatusCode::UNAUTHORIZED
-            }
-            ResponseReason::Error(RateLimitError::KeyUnavailable(code, _))
-                if code == "invalid_user_id" =>
-            {
-                StatusCode::BAD_REQUEST
-            }
+            },
+            ResponseReason::Error(RateLimitError::Key(code, _)) if code == "invalid_user_id" => StatusCode::BAD_REQUEST,
             _ => reason.status_code(),
         };
 
@@ -101,11 +94,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let auth_routes = Router::new()
         .route("/login", get(|| async { "login" }))
-        .merge(
-            Router::new()
-                .route("/me", get(|| async { "me" }))
-                .layer(user_limiter),
-        );
+        .merge(Router::new().route("/me", get(|| async { "me" })).layer(user_limiter));
     let app = Router::new()
         .route("/health", get(|| async { "ok" }))
         .nest("/auth", auth_routes)
@@ -114,11 +103,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address: SocketAddr = "127.0.0.1:3000".parse()?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!("listening on http://{address}");
-    axum::serve(
-        listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
-    )
-    .await?;
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
     Ok(())
 }
 
@@ -128,16 +113,14 @@ mod tests {
 
     #[test]
     fn missing_user_id_is_unauthorized() {
-        let response =
-            AuthResponseFactory.build(Request::new(()), ResponseReason::Error(missing_user_id()));
+        let response = AuthResponseFactory.build(Request::new(()), ResponseReason::Error(missing_user_id()));
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
     fn invalid_user_id_is_bad_request() {
-        let response =
-            AuthResponseFactory.build(Request::new(()), ResponseReason::Error(invalid_user_id()));
+        let response = AuthResponseFactory.build(Request::new(()), ResponseReason::Error(invalid_user_id()));
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
@@ -146,7 +129,7 @@ mod tests {
     fn unrelated_key_failure_keeps_default_server_error() {
         let response = AuthResponseFactory.build(
             Request::new(()),
-            ResponseReason::Error(RateLimitError::KeyUnavailable(
+            ResponseReason::Error(RateLimitError::Key(
                 String::from("peer_ip_unavailable"),
                 String::from("missing peer"),
             )),

@@ -4,10 +4,9 @@ use std::sync::Arc;
 
 use tower::Layer;
 
-use super::builder::RateLimitConfig;
-use super::key_extractor::KeyExtractor;
-use super::response::DefaultResponseFactory;
-use super::service::RateLimitService;
+use super::{
+    builder::RateLimitConfig, key_extractor::KeyExtractor, response::DefaultResponseFactory, service::RateLimitService,
+};
 
 /// Layer that applies the [`RateLimitService`].
 #[derive(Clone)]

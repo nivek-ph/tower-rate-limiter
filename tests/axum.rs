@@ -26,29 +26,18 @@ fn ipv4_uses_the_full_canonical_address() {
 
 #[test]
 fn ipv4_mapped_ipv6_uses_the_standard_ip_representation() {
-    let address = SocketAddr::new(
-        IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xc000, 0x0207)),
-        443,
-    );
+    let address = SocketAddr::new(IpAddr::V6(Ipv6Addr::new(0, 0, 0, 0, 0, 0xffff, 0xc000, 0x0207)), 443);
     let request = request_with_connect_info(Some(address));
 
-    assert_eq!(
-        IpKeyExtractor::new().extract(&request).unwrap(),
-        address.ip()
-    );
+    assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), address.ip());
 }
 
 #[test]
 fn native_ipv6_uses_the_standard_ip_representation() {
-    let address: SocketAddr = "[2001:db8:abcd:1234:5678:9abc:def0:1111]:443"
-        .parse()
-        .unwrap();
+    let address: SocketAddr = "[2001:db8:abcd:1234:5678:9abc:def0:1111]:443".parse().unwrap();
     let request = request_with_connect_info(Some(address));
 
-    assert_eq!(
-        IpKeyExtractor::new().extract(&request).unwrap(),
-        address.ip()
-    );
+    assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), address.ip());
 }
 
 #[test]
@@ -60,6 +49,6 @@ fn missing_connect_info_is_key_unavailable() {
 
     assert!(matches!(
         error,
-        RateLimitError::KeyUnavailable(code, _message) if code == "peer_ip_unavailable"
+        RateLimitError::Key(code, _message) if code == "peer_ip_unavailable"
     ));
 }

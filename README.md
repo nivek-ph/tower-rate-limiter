@@ -89,9 +89,9 @@ use different policy names for different policies or windows.
 
 Middleware failures use one closed `RateLimitError` type with three tuple variants:
 
-- `KeyUnavailable(code, message)`
-- `LimitUnavailable(code, message)`
-- `StoreUnavailable(code, message)`
+- `Key(code, message)`
+- `Quota(code, message)`
+- `Store(code, message)`
 
 Each variant contains a stable machine-readable code followed by a diagnostic message. The
 default `ResponseFactory` produces an empty response body with these statuses:
@@ -100,9 +100,9 @@ default `ResponseFactory` produces an empty response body with these statuses:
 | Outcome            | Status                      |
 | ------------------ | --------------------------- |
 | `RateLimited`      | `429 Too Many Requests`     |
-| `KeyUnavailable`   | `500 Internal Server Error` |
-| `LimitUnavailable` | `500 Internal Server Error` |
-| `StoreUnavailable` | `503 Service Unavailable`   |
+| `Key`   | `500 Internal Server Error` |
+| `Quota` | `500 Internal Server Error` |
+| `Store` | `503 Service Unavailable`   |
 
 
 Applications can implement `ResponseFactory` to choose their own body, status, headers, and
@@ -111,6 +111,33 @@ logging. Store failures reject by default. Select `StoreFailureMode::Allow` thro
 the Store fails.
 
 Key and limit failures never fail open.
+
+### Request bypass
+
+Use `RateLimitBuilder::skip` to exempt requests using application-trusted request headers or
+extensions. The predicate runs before client-key extraction and receives the request head with a
+unit body:
+
+```rust
+use std::{collections::HashSet, net::SocketAddr, sync::Arc};
+
+let allowlist = Arc::new(HashSet::from(["192.168.0.56".parse().unwrap()]));
+
+let limiter = RateLimitLayer::builder(IpKeyExtractor::new())
+    .skip(move |request| {
+        request
+            .extensions()
+            .get::<SocketAddr>()
+            .is_some_and(|peer| allowlist.contains(&peer.ip()))
+    })
+    .with_store(store)
+    .build()?;
+```
+
+Bypassed requests call the inner service without extracting a client key, resolving a limit,
+charging the Store, or receiving rate-limit context or response fields. Keep proxy trust,
+authentication, and credential validation in the application; prefer checking a validated identity
+extension instead of matching raw credentials in this predicate.
 
 ## RateLimit fields and context
 
@@ -201,5 +228,5 @@ reachable test Redis server.
 ## Scope
 
 Version 0.1 intentionally focuses on fixed-window request limiting. Sliding windows, token buckets,
-weighted requests, refunds, request skipping, Redis Cluster, Store lifecycle methods, and built-in
+weighted requests, refunds, Redis Cluster, Store lifecycle methods, and built-in
 forwarding-header trust are outside the current interface.

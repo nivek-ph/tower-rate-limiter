@@ -7,9 +7,7 @@ use std::time::Duration;
 
 use http::{HeaderValue, Request, Response, StatusCode, header::HeaderName};
 
-use super::charge::ChargeMetadata;
-use super::error::RateLimitError;
-use super::store::Usage;
+use super::{charge::ChargeMetadata, error::RateLimitError, store::Usage};
 
 const RATE_LIMIT: HeaderName = HeaderName::from_static("ratelimit");
 const RATE_LIMIT_POLICY: HeaderName = HeaderName::from_static("ratelimit-policy");
@@ -29,11 +27,10 @@ impl ResponseReason {
     pub const fn status_code(&self) -> StatusCode {
         match self {
             Self::RateLimited(_, _) => StatusCode::TOO_MANY_REQUESTS,
-            Self::Error(RateLimitError::KeyUnavailable(_, _))
-            | Self::Error(RateLimitError::LimitUnavailable(_, _)) => {
+            Self::Error(RateLimitError::Key(_, _)) | Self::Error(RateLimitError::Quota(_, _)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
-            }
-            Self::Error(RateLimitError::StoreUnavailable(_, _)) => StatusCode::SERVICE_UNAVAILABLE,
+            },
+            Self::Error(RateLimitError::Store(_, _)) => StatusCode::SERVICE_UNAVAILABLE,
         }
     }
 }
@@ -91,7 +88,7 @@ impl<B> MiddlewareResponse<B> {
                 let response = factory.build(request, reason);
 
                 append_rate_limited_response_headers(response, metadata)
-            }
+            },
             Self::Error(request, error) => factory.build(request, ResponseReason::Error(error)),
         }
     }
@@ -99,12 +96,9 @@ impl<B> MiddlewareResponse<B> {
 
 /// Decorate an allowed (or fail-open) inner response with Rate Limit Fields.
 ///
-/// `None` means fail-open: no fields are written. When present, fields follow
-/// `emit_headers`; `Retry-After` is never added on this path.
-pub(super) fn append_inner_response_headers<B>(
-    response: Response<B>,
-    metadata: Option<ChargeMetadata>,
-) -> Response<B> {
+/// `None` means no quota metadata is available after bypass or fail-open, so no fields are
+/// written. When present, fields follow `emit_headers`; `Retry-After` is never added on this path.
+pub(super) fn append_inner_response_headers<B>(response: Response<B>, metadata: Option<ChargeMetadata>) -> Response<B> {
     match metadata {
         Some(metadata) => append_rate_limit_fields(response, &metadata),
         None => response,
@@ -114,10 +108,7 @@ pub(super) fn append_inner_response_headers<B>(
 /// Decorate a rate-limited middleware response with Rate Limit Fields and Retry-After.
 ///
 /// Rate Limit Fields still respect `emit_headers`. `Retry-After` is always added.
-fn append_rate_limited_response_headers<B>(
-    response: Response<B>,
-    metadata: ChargeMetadata,
-) -> Response<B> {
+fn append_rate_limited_response_headers<B>(response: Response<B>, metadata: ChargeMetadata) -> Response<B> {
     let mut response = append_rate_limit_fields(response, &metadata);
     append_header(
         &mut response,
@@ -128,10 +119,7 @@ fn append_rate_limited_response_headers<B>(
 }
 
 /// Shared Rate Limit / RateLimit-Policy field writer.
-fn append_rate_limit_fields<B>(
-    mut response: Response<B>,
-    metadata: &ChargeMetadata,
-) -> Response<B> {
+fn append_rate_limit_fields<B>(mut response: Response<B>, metadata: &ChargeMetadata) -> Response<B> {
     if !metadata.emit_headers {
         return response;
     }
@@ -140,11 +128,7 @@ fn append_rate_limit_fields<B>(
     append_header(
         &mut response,
         RATE_LIMIT_POLICY,
-        &format!(
-            r#""{name}";q={};w={}"#,
-            metadata.limit,
-            ceil_seconds(metadata.window)
-        ),
+        &format!(r#""{name}";q={};w={}"#, metadata.limit, ceil_seconds(metadata.window)),
     );
     append_header(
         &mut response,
