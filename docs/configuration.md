@@ -60,7 +60,30 @@ without calling the inner service.
 service is called without `RateLimitContext` or rate-limit fields because no trustworthy quota
 state exists. Key and quota failures never fail open.
 
-![Store result and failure-mode flow](diagrams/store-failure.svg)
+```mermaid
+%%{init: {"themeVariables": {"fontSize": "10px"}, "flowchart": {"curve": "basis", "useMaxWidth": false, "padding": 5, "nodeSpacing": 16, "rankSpacing": 20}}}%%
+flowchart TD
+    store["Store result"] --> valid{"Ok and used ≥ 1?"}
+    valid -- "Yes" --> evaluate["Evaluate quota<br/>Allowed or rate limited"]
+    valid -- "No" --> mode{"StoreFailureMode"}
+    mode -- "Reject · Error(Store)" --> factory["ResponseFactory"]
+    mode -- "Allow" --> allow["Call inner service<br/>without quota metadata"]
+
+    resolution["Key or quota resolution<br/>before Store::increment"] -- "Error(Key or Quota)" --> factory
+    factory --> reject["Middleware response<br/>500 or 503 by default"]
+
+    classDef input fill:#ede9fe,stroke:#8b5cf6,color:#3b0764,stroke-width:2px
+    classDef decision fill:#fef3c7,stroke:#f59e0b,color:#78350f,stroke-width:1.5px
+    classDef success fill:#dcfce7,stroke:#22c55e,color:#14532d,stroke-width:1.5px
+    classDef danger fill:#ffe4e6,stroke:#f43f5e,color:#881337,stroke-width:1.5px
+    classDef process fill:#dbeafe,stroke:#3b82f6,color:#172554,stroke-width:1.5px
+
+    class store,resolution input
+    class valid,mode decision
+    class evaluate,allow success
+    class factory process
+    class reject danger
+```
 
 Choose this per policy based on the cost of under-enforcement:
 

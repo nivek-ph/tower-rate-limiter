@@ -15,7 +15,43 @@ For each request presented to the Layer, the service follows this order:
 6. Validate and evaluate returned usage.
 7. Call the already-ready inner service or build an immediate response.
 
-![Rate-limited request lifecycle](diagrams/request-lifecycle.svg)
+```mermaid
+%%{init: {"themeVariables": {"fontSize": "10px"}, "flowchart": {"curve": "basis", "useMaxWidth": false, "padding": 5, "nodeSpacing": 14, "rankSpacing": 18}}}%%
+flowchart TD
+    request["Request"] --> skip{"Skip predicate matches?"}
+    skip -- "Yes" --> skipped_inner["Inner service"]
+    skipped_inner --> skipped_response["Inner response<br/>No rate-limit fields"]
+    skip -- "No" --> key["KeyExtractor"]
+    key -- "Key error" --> response_factory["ResponseFactory"]
+    key --> limit["LimitProvider"]
+    limit -- "Quota error" --> response_factory
+    limit --> store["Store::increment"]
+    store --> usage{"Valid Store result?<br/>Ok and used ≥ 1"}
+    usage -- "No or Store error" --> failure_mode{"Store failure mode"}
+    failure_mode -- "Allow" --> fail_open_inner["Inner service<br/>No quota metadata"]
+    fail_open_inner --> fail_open_response["Inner response<br/>No rate-limit fields"]
+    failure_mode -- "Reject" --> response_factory
+    usage -- "Yes" --> decision{"used > limit?"}
+    decision -- "Yes · RateLimited" --> response_factory
+    response_factory --> middleware_response["Middleware-produced response<br/>429, 500, or 503 by default"]
+    decision -- "No" --> context["Add RateLimitContext<br/>to the request"]
+    context --> inner["Inner service"]
+    inner --> response["Inner response<br/>Rate-limit fields appended"]
+
+    classDef entry fill:#ede9fe,stroke:#8b5cf6,color:#3b0764,stroke-width:2px
+    classDef process fill:#dbeafe,stroke:#3b82f6,color:#172554,stroke-width:1.5px
+    classDef decision fill:#fef3c7,stroke:#f59e0b,color:#78350f,stroke-width:1.5px
+    classDef success fill:#dcfce7,stroke:#22c55e,color:#14532d,stroke-width:1.5px
+    classDef neutral fill:#f1f5f9,stroke:#64748b,color:#1e293b,stroke-width:1.5px
+    classDef danger fill:#ffe4e6,stroke:#f43f5e,color:#881337,stroke-width:1.5px
+
+    class request entry
+    class key,limit,store,response_factory,context,inner process
+    class skip,usage,failure_mode,decision decision
+    class response success
+    class skipped_inner,skipped_response,fail_open_inner,fail_open_response neutral
+    class middleware_response danger
+```
 
 Charging happens before the downstream call. The middleware does not refund quota when a handler
 returns an error, because the request already consumed application work.

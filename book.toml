@@ -5,6 +5,9 @@ authors = ["nivek-ph"]
 language = "en"
 src = "docs"
 
+[preprocessor.mermaid]
+command = "mdbook-mermaid"
+
 [output.html]
 site-url = "/tower-rate-limiter/"
 default-theme = "light"
@@ -14,6 +17,7 @@ git-repository-url = "https://github.com/nivek-ph/tower-rate-limiter"
 git-repository-icon = "fab-github"
 edit-url-template = "https://github.com/nivek-ph/tower-rate-limiter/edit/main/docs/{path}"
 no-section-label = true
+additional-js = ["mermaid.min.js", "mermaid-init.js"]
 
 [output.html.search]
 enable = true
