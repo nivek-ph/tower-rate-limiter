@@ -1,0 +1,20 @@
+[book]
+title = "tower-rate-limiter"
+description = "Keyed HTTP rate limiting middleware for Tower"
+authors = ["nivek-ph"]
+language = "en"
+src = "docs"
+
+[output.html]
+site-url = "/tower-rate-limiter/"
+default-theme = "light"
+preferred-dark-theme = "navy"
+additional-css = ["docs/custom.css"]
+git-repository-url = "https://github.com/nivek-ph/tower-rate-limiter"
+git-repository-icon = "fab-github"
+edit-url-template = "https://github.com/nivek-ph/tower-rate-limiter/edit/main/docs/{path}"
+no-section-label = true
+
+[output.html.search]
+enable = true
+limit-results = 20
