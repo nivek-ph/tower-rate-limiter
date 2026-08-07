@@ -12,10 +12,10 @@ The crate is Tower-first. Axum and Redis are optional adapters.
 
 ```toml
 [dependencies]
-tower-rate-limiter = "0.1.0-alpha.0"
+tower-rate-limiter = "0.1"
 
 # Optional adapters
-# tower-rate-limiter = { version = "0.1.0-alpha.0", features = ["axum", "redis"] }
+# tower-rate-limiter = { version = "0.1", features = ["axum", "redis"] }
 ```
 
 
@@ -31,9 +31,9 @@ With `--no-default-features`, applications can provide their own `Store`, `KeyEx
 
 ## Quick start
 
-Start with `[tower_memory](examples/tower_memory.rs)`. It demonstrates a custom `KeyExtractor`,
+Start with [`tower_memory`](examples/tower_memory.rs). It demonstrates a custom `KeyExtractor`,
 an explicit `MemoryStore`, a fixed quota, and Tower Layer composition. For request-derived quotas
-and downstream `RateLimitContext`, see `[tower_dynamic](examples/tower_dynamic.rs)`.
+and downstream `RateLimitContext`, see [`tower_dynamic`](examples/tower_dynamic.rs).
 
 Builder defaults:
 
@@ -44,7 +44,7 @@ Builder defaults:
 | Window           | 60 seconds       |
 | Policy name      | `default-policy` |
 | Store errors     | Reject           |
-| RateLimit fields | Enabled          |
+| RateLimit fields | Draft 11         |
 
 
 The Store is always explicit via `.with_store(...)`.
@@ -89,9 +89,9 @@ use different policy names for different policies or windows.
 
 Middleware failures use one closed `RateLimitError` type with three tuple variants:
 
-- `KeyUnavailable(code, message)`
-- `LimitUnavailable(code, message)`
-- `StoreUnavailable(code, message)`
+- `Key(code, message)`
+- `Quota(code, message)`
+- `Store(code, message)`
 
 Each variant contains a stable machine-readable code followed by a diagnostic message. The
 default `ResponseFactory` produces an empty response body with these statuses:
@@ -100,29 +100,73 @@ default `ResponseFactory` produces an empty response body with these statuses:
 | Outcome            | Status                      |
 | ------------------ | --------------------------- |
 | `RateLimited`      | `429 Too Many Requests`     |
-| `KeyUnavailable`   | `500 Internal Server Error` |
-| `LimitUnavailable` | `500 Internal Server Error` |
-| `StoreUnavailable` | `503 Service Unavailable`   |
+| `Key`               | `500 Internal Server Error` |
+| `Quota`             | `500 Internal Server Error` |
+| `Store`             | `503 Service Unavailable`   |
 
 
 Applications can implement `ResponseFactory` to choose their own body, status, headers, and
-logging. Store failures reject by default. Select `StoreErrorAction::Allow` through
-`RateLimitBuilder::on_store_error` to call the inner service without claiming quota metadata when
+logging. Store failures reject by default. Select `StoreFailureMode::Allow` through
+`RateLimitBuilder::store_failure_mode` to call the inner service without claiming quota metadata when
 the Store fails.
 
 Key and limit failures never fail open.
 
+### Request bypass
+
+Use `RateLimitBuilder::skip` to exempt requests using application-trusted request headers or
+extensions. The predicate runs before client-key extraction and receives the request head with a
+unit body:
+
+```rust
+use std::{collections::HashSet, net::SocketAddr, sync::Arc};
+
+let allowlist = Arc::new(HashSet::from(["192.168.0.56".parse().unwrap()]));
+
+let limiter = RateLimitLayer::builder(IpKeyExtractor::new())
+    .skip(move |request| {
+        request
+            .extensions()
+            .get::<SocketAddr>()
+            .is_some_and(|peer| allowlist.contains(&peer.ip()))
+    })
+    .with_store(store)
+    .build()?;
+```
+
+Bypassed requests call the inner service without extracting a client key, resolving a limit,
+charging the Store, or receiving rate-limit context or response fields. Keep proxy trust,
+authentication, and credential validation in the application; prefer checking a validated identity
+extension instead of matching raw credentials in this predicate.
+
 ## RateLimit fields and context
 
-When enabled, allowed and rate-limited responses include the current draft-11 fields:
+By default, allowed and rate-limited responses include fields following the draft-11 definitions
+of [`RateLimit-Policy`](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-11#name-ratelimit-policy-field)
+and [`RateLimit`](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-11#name-ratelimit-field):
 
 ```text
 RateLimit-Policy: "<policy>";q=<limit>;w=<window-seconds>
-RateLimit: "<policy>";r=<remaining>;t=<reset-seconds>
+RateLimit: "<policy>";r=<remaining>;t=<effective-window-seconds>
 ```
 
-Rate-limited responses also include `Retry-After`, even when `.emit_headers(false)` disables the
-two RateLimit fields. Active durations are rounded up to whole seconds.
+`RateLimit-Policy` advertises the configured fixed-window quota: `q` is the request limit and `w`
+is the window in seconds. `RateLimit` reports the current service limit: `r` is the remaining
+quota after the current request and `t` is the effective window in seconds, derived from the
+Store's `reset_after`. The optional draft-11 `qu` (quota unit) and `pk` (partition key) parameters
+are not emitted; omitting `qu` means the default quota unit is requests.
+
+Select the older [draft 7](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-07#name-ratelimit-header-field-def)
+format with `.rate_limit_fields(RateLimitFields::Draft7)`:
+
+```text
+RateLimit-Policy: <limit>;w=<window-seconds>
+RateLimit: limit=<limit>, remaining=<remaining>, reset=<reset-seconds>
+```
+
+Draft 7 does not include the configured policy name in either field. Omit both fields with
+`.rate_limit_fields(RateLimitFields::Disabled)`; rate-limited responses still include
+`Retry-After`. Active durations are rounded up to whole seconds for both revisions.
 
 Allowed requests receive `RateLimitContext` in their request extensions. Its policies expose:
 
@@ -134,9 +178,9 @@ Nested Layers append policies instead of overwriting existing context or respons
 
 ## Axum
 
-See `[axum_memory](examples/axum_memory.rs)` for `ConnectInfo` setup and nested policy scopes. For
+See [`axum_memory`](examples/axum_memory.rs) for `ConnectInfo` setup and nested policy scopes. For
 a deployment-owned forwarding-header policy, see
-`[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)`.
+[`axum_x_forwarded_for`](examples/axum_x_forwarded_for.rs).
 
 `IpKeyExtractor` reads a peer `SocketAddr` request extension and returns its `IpAddr`. With the
 `axum` feature, it also reads `ConnectInfo<SocketAddr>`. It does not interpret forwarding headers
@@ -147,7 +191,7 @@ or define a trusted-proxy policy; applications own that policy.
 `RedisStore` accepts an established `redis::aio::MultiplexedConnection`. It does not parse URLs,
 open connections, or own connection shutdown.
 
-See `[axum_redis](examples/axum_redis.rs)` for connection setup, namespacing, a shared Store, and
+See [`axum_redis`](examples/axum_redis.rs) for connection setup, namespacing, a shared Store, and
 custom error responses.
 
 One Lua operation performs `INCR`, sets `PEXPIRE` only on the first increment, and returns the
@@ -155,7 +199,7 @@ current usage plus `PTTL`. A missing or non-positive TTL is a Store error instea
 repair. Redis adds the `rl:` marker and the optional namespace to the key it receives.
 
 Applications that need hashing or another representation can use
-`RateLimitBuilder::with_key_encoding` to transform the scoped key before it reaches any Store. The
+`RateLimitBuilder::with_key_encoder` to transform the scoped key before it reaches any Store. The
 encoder must be deterministic, collision-resistant for the application's key space, non-blocking,
 and free of I/O.
 
@@ -164,11 +208,11 @@ and free of I/O.
 
 | Example                                                    | Shows                                            |
 | ---------------------------------------------------------- | ------------------------------------------------ |
-| `[tower_memory](examples/tower_memory.rs)`                 | Basic Tower service with `MemoryStore`           |
-| `[tower_dynamic](examples/tower_dynamic.rs)`               | Request-derived quota with `LimitProvider`       |
-| `[axum_memory](examples/axum_memory.rs)`                   | Application and route-scoped Axum policies       |
-| `[axum_x_forwarded_for](examples/axum_x_forwarded_for.rs)` | Application-owned forwarding-header trust policy |
-| `[axum_redis](examples/axum_redis.rs)`                     | Shared Redis Store and custom error responses    |
+| [`tower_memory`](examples/tower_memory.rs)                 | Basic Tower service with `MemoryStore`           |
+| [`tower_dynamic`](examples/tower_dynamic.rs)               | Request-derived quota with `LimitProvider`       |
+| [`axum_memory`](examples/axum_memory.rs)                   | Application and route-scoped Axum policies       |
+| [`axum_x_forwarded_for`](examples/axum_x_forwarded_for.rs) | Application-owned forwarding-header trust policy |
+| [`axum_redis`](examples/axum_redis.rs)                     | Shared Redis Store and custom error responses    |
 
 
 ```text
@@ -201,5 +245,5 @@ reachable test Redis server.
 ## Scope
 
 Version 0.1 intentionally focuses on fixed-window request limiting. Sliding windows, token buckets,
-weighted requests, refunds, request skipping, Redis Cluster, Store lifecycle methods, and built-in
+weighted requests, refunds, Redis Cluster, Store lifecycle methods, and built-in
 forwarding-header trust are outside the current interface.

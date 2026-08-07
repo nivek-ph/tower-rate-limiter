@@ -10,10 +10,7 @@ struct StaticClient;
 impl KeyExtractor for StaticClient {
     type Key = String;
 
-    fn extract<B>(
-        &self,
-        _request: &Request<B>,
-    ) -> Result<Self::Key, tower_rate_limiter::RateLimitError> {
+    fn extract<B>(&self, _request: &Request<B>) -> Result<Self::Key, tower_rate_limiter::RateLimitError> {
         Ok(String::from("example-client"))
     }
 }

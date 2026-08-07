@@ -41,7 +41,7 @@ impl MemoryStore {
 
 fn expiration(now: Instant, window: Duration) -> Result<Instant, RateLimitError> {
     now.checked_add(window).ok_or_else(|| {
-        RateLimitError::StoreUnavailable(
+        RateLimitError::Store(
             String::from("memory_window_out_of_range"),
             String::from("window cannot be represented by the process clock"),
         )
@@ -57,7 +57,7 @@ impl Store for MemoryStore {
             .state
             .lock()
             .map_err(|_| {
-                RateLimitError::StoreUnavailable(
+                RateLimitError::Store(
                     String::from("memory_store_poisoned"),
                     String::from("memory store state is poisoned"),
                 )
@@ -76,7 +76,7 @@ impl Store for MemoryStore {
                             entry.expires_at = expiration(now, window)?;
                         }
                         occupied.into_mut()
-                    }
+                    },
                     HashMapEntry::Vacant(vacant) => vacant.insert(Entry {
                         used: 0,
                         expires_at: expiration(now, window)?,

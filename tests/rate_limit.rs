@@ -11,7 +11,7 @@ use std::{
 use http::{Request, Response, StatusCode};
 use tower::{Layer, Service};
 use tower_rate_limiter::{
-    KeyExtractor, LimitProvider, RateLimitContext, RateLimitError, RateLimitLayer, ResponseFactory,
+    KeyExtractor, LimitProvider, RateLimitContext, RateLimitError, RateLimitFields, RateLimitLayer, ResponseFactory,
     ResponseReason, Store, Usage,
 };
 
@@ -36,6 +36,20 @@ impl KeyExtractor for StaticKey {
     }
 }
 
+#[derive(Clone, Copy)]
+struct FailingKey;
+
+impl KeyExtractor for FailingKey {
+    type Key = String;
+
+    fn extract<B>(&self, _request: &Request<B>) -> Result<Self::Key, RateLimitError> {
+        Err(RateLimitError::Key(
+            String::from("test_key_failed"),
+            String::from("key"),
+        ))
+    }
+}
+
 #[derive(Clone, Default)]
 struct FakeStore {
     counts: Arc<Mutex<HashMap<String, u64>>>,
@@ -48,10 +62,9 @@ impl Store for FakeStore {
     type Future = Ready<Result<Usage, RateLimitError>>;
 
     fn increment(&self, key: &str, window: Duration) -> Self::Future {
-        self.calls
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         if self.fail {
-            return ready(Err(RateLimitError::StoreUnavailable(
+            return ready(Err(RateLimitError::Store(
                 String::from("test_store_failed"),
                 String::from("store"),
             )));
@@ -79,7 +92,7 @@ impl LimitProvider for FailingLimit {
     type Future = Ready<Result<u64, RateLimitError>>;
 
     fn limit<B>(&self, _request: &Request<B>) -> Self::Future {
-        ready(Err(RateLimitError::LimitUnavailable(
+        ready(Err(RateLimitError::Quota(
             String::from("test_limit_failed"),
             String::from("limit"),
         )))
@@ -100,6 +113,7 @@ impl std::error::Error for TestError {}
 #[derive(Clone, Default)]
 struct OkService {
     calls: Arc<std::sync::atomic::AtomicUsize>,
+    bodies: Arc<Mutex<Vec<Vec<u8>>>>,
 }
 
 impl Service<Request<Vec<u8>>> for OkService {
@@ -111,9 +125,12 @@ impl Service<Request<Vec<u8>>> for OkService {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, _request: Request<Vec<u8>>) -> Self::Future {
-        self.calls
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    fn call(&mut self, request: Request<Vec<u8>>) -> Self::Future {
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.bodies
+            .lock()
+            .expect("body capture lock")
+            .push(request.body().clone());
         ready(Ok(Response::new(b"ok".to_vec())))
     }
 }
@@ -134,10 +151,7 @@ impl Service<Request<Vec<u8>>> for ContextCaptureService {
 
     fn call(&mut self, request: Request<Vec<u8>>) -> Self::Future {
         if let Some(context) = request.extensions().get::<RateLimitContext>() {
-            self.contexts
-                .lock()
-                .expect("context lock")
-                .push(context.clone());
+            self.contexts.lock().expect("context lock").push(context.clone());
         }
         ready(Ok(Response::new(Vec::new())))
     }
@@ -147,10 +161,10 @@ fn request() -> Request<Vec<u8>> {
     Request::new(Vec::new())
 }
 
-fn call_service<S>(
-    service: &mut S,
-    request: Request<Vec<u8>>,
-) -> Result<Response<Vec<u8>>, S::Error>
+#[derive(Clone, Copy)]
+struct TrustedCaller;
+
+fn call_service<S>(service: &mut S, request: Request<Vec<u8>>) -> Result<Response<Vec<u8>>, S::Error>
 where
     S: Service<Request<Vec<u8>>, Response = Response<Vec<u8>>>,
 {
@@ -186,6 +200,43 @@ fn first_limit_requests_pass_and_next_request_is_rate_limited() {
 }
 
 #[test]
+fn skip_predicate_bypasses_the_complete_rate_limit_path() {
+    let store = FakeStore::default();
+    let store_calls = Arc::clone(&store.calls);
+    let inner = OkService::default();
+    let inner_calls = Arc::clone(&inner.calls);
+    let inner_bodies = Arc::clone(&inner.bodies);
+    let mut service = RateLimitLayer::builder(FailingKey)
+        .limit_provider(FailingLimit)
+        .skip(|request| request.extensions().get::<TrustedCaller>().is_some())
+        .with_store(store)
+        .build()
+        .expect("valid layer")
+        .layer(inner);
+    let mut bypassed = request();
+    bypassed.extensions_mut().insert(TrustedCaller);
+    *bypassed.body_mut() = b"payload".to_vec();
+
+    let response = call_service(&mut service, bypassed).expect("bypassed response");
+
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(store_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+    assert_eq!(
+        inner_bodies.lock().expect("body capture lock").as_slice(),
+        [b"payload".to_vec()]
+    );
+    assert!(response.headers().get("ratelimit").is_none());
+    assert!(response.extensions().get::<RateLimitContext>().is_none());
+
+    let response = call_service(&mut service, request()).expect("enforced response");
+
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(store_calls.load(std::sync::atomic::Ordering::Relaxed), 0);
+    assert_eq!(inner_calls.load(std::sync::atomic::Ordering::Relaxed), 1);
+}
+
+#[test]
 fn limit_failures_do_not_call_store_or_inner() {
     let store = FakeStore::default();
     let store_calls = Arc::clone(&store.calls);
@@ -217,12 +268,7 @@ fn empty_client_keys_are_passed_to_the_store() {
     let response = call_service(&mut service, request()).expect("response");
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert!(
-        stored_keys
-            .lock()
-            .expect("store lock")
-            .contains_key("default-policy:")
-    );
+    assert!(stored_keys.lock().expect("store lock").contains_key("default-policy:"));
 }
 
 #[test]
@@ -246,7 +292,7 @@ fn store_error_is_rejected_or_allowed_as_configured() {
     let inner_calls = Arc::clone(&inner.calls);
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(1)
-        .on_store_error(tower_rate_limiter::StoreErrorAction::Allow)
+        .store_failure_mode(tower_rate_limiter::StoreFailureMode::Allow)
         .with_store(store)
         .build()
         .expect("valid layer")
@@ -278,7 +324,7 @@ fn allow_passes_through_when_store_usage_is_invalid() {
     let inner_calls = Arc::clone(&inner.calls);
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(1)
-        .on_store_error(tower_rate_limiter::StoreErrorAction::Allow)
+        .store_failure_mode(tower_rate_limiter::StoreFailureMode::Allow)
         .with_store(store)
         .build()
         .expect("valid layer")
@@ -335,13 +381,10 @@ impl ResponseFactory<Vec<u8>> for ReasonFactory {
     fn build(&self, _request: Request<Vec<u8>>, reason: ResponseReason) -> Response<Vec<u8>> {
         let status = match reason {
             ResponseReason::RateLimited(..) => StatusCode::IM_A_TEAPOT,
-            ResponseReason::Error(RateLimitError::KeyUnavailable(_, _))
-            | ResponseReason::Error(RateLimitError::LimitUnavailable(_, _)) => {
+            ResponseReason::Error(RateLimitError::Key(_, _)) | ResponseReason::Error(RateLimitError::Quota(_, _)) => {
                 StatusCode::BAD_REQUEST
-            }
-            ResponseReason::Error(RateLimitError::StoreUnavailable(_, _)) => {
-                StatusCode::NOT_ACCEPTABLE
-            }
+            },
+            ResponseReason::Error(RateLimitError::Store(_, _)) => StatusCode::NOT_ACCEPTABLE,
         };
         Response::builder()
             .status(status)
@@ -376,6 +419,38 @@ fn custom_response_factory_decides_how_to_handle_limit_errors() {
     let response = call_service(&mut service, request()).expect("response");
 
     assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn custom_response_factory_decides_how_to_handle_key_errors() {
+    let mut service = RateLimitLayer::builder(FailingKey)
+        .with_store(SingleHitStore)
+        .response_factory(ReasonFactory)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    let response = call_service(&mut service, request()).expect("response");
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+}
+
+#[test]
+fn custom_response_factory_decides_how_to_handle_store_errors() {
+    let store = FakeStore {
+        fail: true,
+        ..FakeStore::default()
+    };
+    let mut service = RateLimitLayer::builder(StaticKey("caller"))
+        .with_store(store)
+        .response_factory(ReasonFactory)
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    let response = call_service(&mut service, request()).expect("response");
+
+    assert_eq!(response.status(), StatusCode::NOT_ACCEPTABLE);
 }
 
 #[derive(Clone)]
@@ -440,14 +515,11 @@ fn request_flow_resolves_key_then_limit_then_store() {
     .layer(OkService::default());
 
     call_service(&mut service, request()).expect("allowed response");
-    assert_eq!(
-        *events.lock().expect("order lock"),
-        vec!["key", "limit", "store"]
-    );
+    assert_eq!(*events.lock().expect("order lock"), vec!["key", "limit", "store"]);
 }
 
 #[test]
-fn key_encoding_runs_after_key_scoping_before_store() {
+fn key_encoder_runs_after_key_scoping_before_store() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let store = FakeStore::default();
     let stored_keys = Arc::clone(&store.counts);
@@ -460,7 +532,7 @@ fn key_encoding_runs_after_key_scoping_before_store() {
     })
     .policy_name("api")
     .window(Duration::from_secs(60))
-    .with_key_encoding(move |key| {
+    .with_key_encoder(move |key| {
         encoding_events.lock().expect("order lock").push("encoding");
         assert_eq!(key, "api:caller");
         format!("encoded:{key}")
@@ -472,10 +544,7 @@ fn key_encoding_runs_after_key_scoping_before_store() {
 
     call_service(&mut service, request()).expect("allowed response");
 
-    assert_eq!(
-        *events.lock().expect("order lock"),
-        vec!["key", "limit", "encoding"]
-    );
+    assert_eq!(*events.lock().expect("order lock"), vec!["key", "limit", "encoding"]);
     assert!(
         stored_keys
             .lock()
@@ -485,7 +554,7 @@ fn key_encoding_runs_after_key_scoping_before_store() {
 }
 
 #[test]
-fn key_encoding_is_raw_by_default() {
+fn scoped_key_is_raw_without_a_key_encoder() {
     let store = FakeStore::default();
     let stored_keys = Arc::clone(&store.counts);
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
@@ -498,12 +567,7 @@ fn key_encoding_is_raw_by_default() {
 
     call_service(&mut service, request()).expect("allowed response");
 
-    assert!(
-        stored_keys
-            .lock()
-            .expect("store lock")
-            .contains_key("api:caller")
-    );
+    assert!(stored_keys.lock().expect("store lock").contains_key("api:caller"));
 }
 
 #[test]
@@ -520,22 +584,17 @@ fn scoped_key_escapes_colons_and_percents_before_store() {
 
     call_service(&mut service, request()).expect("allowed response");
 
-    assert!(
-        stored_keys
-            .lock()
-            .expect("store lock")
-            .contains_key("a%3Ab:c%25d%3Ae")
-    );
+    assert!(stored_keys.lock().expect("store lock").contains_key("a%3Ab:c%25d%3Ae"));
 }
 
 #[test]
-fn key_encoding_runs_on_escaped_scoped_key() {
+fn key_encoder_receives_the_escaped_scoped_key() {
     let store = FakeStore::default();
     let stored_keys = Arc::clone(&store.counts);
     let mut service = RateLimitLayer::builder(StaticKey("c%d:e"))
         .policy_name("a:b")
         .window(Duration::from_secs(60))
-        .with_key_encoding(|key| {
+        .with_key_encoder(|key| {
             assert_eq!(key, "a%3Ab:c%25d%3Ae");
             format!("encoded:{key}")
         })
@@ -577,15 +636,11 @@ fn policy_names_isolate_usage_when_one_store_is_reused() {
         StatusCode::OK
     );
     assert_eq!(
-        call_service(&mut first, request())
-            .expect("first blocked")
-            .status(),
+        call_service(&mut first, request()).expect("first blocked").status(),
         StatusCode::TOO_MANY_REQUESTS
     );
     assert_eq!(
-        call_service(&mut second, request())
-            .expect("second")
-            .status(),
+        call_service(&mut second, request()).expect("second").status(),
         StatusCode::OK
     );
 }
@@ -621,15 +676,11 @@ fn same_policy_shares_usage_when_windows_differ() {
         StatusCode::TOO_MANY_REQUESTS
     );
     assert_eq!(
-        call_service(&mut short, request())
-            .expect("short blocked")
-            .status(),
+        call_service(&mut short, request()).expect("short blocked").status(),
         StatusCode::TOO_MANY_REQUESTS
     );
     assert_eq!(
-        call_service(&mut long, request())
-            .expect("long blocked")
-            .status(),
+        call_service(&mut long, request()).expect("long blocked").status(),
         StatusCode::TOO_MANY_REQUESTS
     );
 }
@@ -673,9 +724,7 @@ fn asynchronous_limit_provider_is_awaited_before_store() {
         .layer(OkService::default());
 
     assert_eq!(
-        call_service(&mut service, request())
-            .expect("response")
-            .status(),
+        call_service(&mut service, request()).expect("response").status(),
         StatusCode::OK
     );
 }
@@ -768,10 +817,34 @@ fn nested_layers_append_policy_fields_and_context_entries() {
 }
 
 #[test]
+fn draft11_is_the_default_rate_limit_fields_revision() {
+    assert_eq!(RateLimitFields::default(), RateLimitFields::Draft11);
+}
+
+#[test]
+fn draft7_fields_use_the_legacy_dictionary_format() {
+    let mut service = RateLimitLayer::builder(StaticKey("caller"))
+        .limit(1)
+        .rate_limit_fields(RateLimitFields::Draft7)
+        .with_store(FakeStore::default())
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    let response = call_service(&mut service, request()).expect("allowed response");
+
+    assert_eq!(response.headers().get("RateLimit-Policy").unwrap(), "1;w=60");
+    assert_eq!(
+        response.headers().get("RateLimit").unwrap(),
+        "limit=1, remaining=0, reset=60"
+    );
+}
+
+#[test]
 fn disabling_fields_keeps_retry_after_on_blocked_responses() {
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(1)
-        .emit_headers(false)
+        .rate_limit_fields(RateLimitFields::Disabled)
         .with_store(FakeStore::default())
         .build()
         .expect("valid layer")
@@ -882,9 +955,7 @@ impl ReadinessService {
 impl Clone for ReadinessService {
     fn clone(&self) -> Self {
         Self {
-            id: self
-                .next_id
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            id: self.next_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             next_id: Arc::clone(&self.next_id),
             events: Arc::clone(&self.events),
         }
@@ -897,18 +968,12 @@ impl Service<Request<Vec<u8>>> for ReadinessService {
     type Future = Ready<Result<Self::Response, Self::Error>>;
 
     fn poll_ready(&mut self, _cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.events
-            .lock()
-            .expect("readiness lock")
-            .push((self.id, "ready"));
+        self.events.lock().expect("readiness lock").push((self.id, "ready"));
         Poll::Ready(Ok(()))
     }
 
     fn call(&mut self, _request: Request<Vec<u8>>) -> Self::Future {
-        self.events
-            .lock()
-            .expect("readiness lock")
-            .push((self.id, "call"));
+        self.events.lock().expect("readiness lock").push((self.id, "call"));
         ready(Ok(Response::new(b"ready".to_vec())))
     }
 }
@@ -921,8 +986,7 @@ struct DropTrackingService {
 
 impl Drop for DropTrackingService {
     fn drop(&mut self) {
-        self.drops
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.drops.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }
 
@@ -936,8 +1000,7 @@ impl Service<Request<Vec<u8>>> for DropTrackingService {
     }
 
     fn call(&mut self, _request: Request<Vec<u8>>) -> Self::Future {
-        self.calls
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.calls.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         ready(Ok(Response::new(Vec::new())))
     }
 }
@@ -948,17 +1011,11 @@ fn allowed_request_calls_the_exact_inner_instance_reserved_by_poll_ready() {
     let mut service = layer(FakeStore::default(), 1).layer(inner);
     let mut context = Context::from_waker(Waker::noop());
 
-    assert!(matches!(
-        service.poll_ready(&mut context),
-        Poll::Ready(Ok(()))
-    ));
+    assert!(matches!(service.poll_ready(&mut context), Poll::Ready(Ok(()))));
     let response = block_on(service.call(request())).expect("allowed response");
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        *events.lock().expect("readiness lock"),
-        vec![(0, "ready"), (0, "call")]
-    );
+    assert_eq!(*events.lock().expect("readiness lock"), vec![(0, "ready"), (0, "call")]);
 }
 
 #[test]

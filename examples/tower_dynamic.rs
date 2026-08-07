@@ -7,9 +7,7 @@ use std::{
 
 use http::{Request, Response};
 use tower::{Layer, Service, ServiceExt, service_fn};
-use tower_rate_limiter::{
-    KeyExtractor, LimitProvider, MemoryStore, RateLimitContext, RateLimitError, RateLimitLayer,
-};
+use tower_rate_limiter::{KeyExtractor, LimitProvider, MemoryStore, RateLimitContext, RateLimitError, RateLimitLayer};
 
 /// Extract the application-owned user identity used as the Client Key.
 #[derive(Clone, Copy)]
@@ -26,7 +24,7 @@ impl KeyExtractor for UserIdKeyExtractor {
             .filter(|value| !value.is_empty())
             .map(str::to_owned)
             .ok_or_else(|| {
-                RateLimitError::KeyUnavailable(
+                RateLimitError::Key(
                     String::from("invalid_user_id"),
                     String::from("x-user-id is missing, empty, or invalid UTF-8"),
                 )
@@ -44,11 +42,7 @@ impl LimitProvider for PlanLimitProvider {
     type Future = Ready<Result<u64, RateLimitError>>;
 
     fn limit<B>(&self, request: &Request<B>) -> Self::Future {
-        let limit = match request
-            .headers()
-            .get("x-plan")
-            .and_then(|value| value.to_str().ok())
-        {
+        let limit = match request.headers().get("x-plan").and_then(|value| value.to_str().ok()) {
             Some("premium") => 5,
             _ => 2,
         };

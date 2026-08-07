@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Add request bypass predicates through `RateLimitBuilder::skip`.
+- Add selectable Draft 7 and Draft 11 RateLimit fields, with an option to disable both fields.
+
+### Changed
+
+- Centralize middleware-generated response construction and RateLimit field finalization.
+- Rename `StoreErrorAction` to `StoreFailureMode`.
+- Rename `RateLimitError` variants to `Key`, `Quota`, and `Store`.
+- Rename caller-supplied key transformation APIs to `with_key_encoder` and `KeyEncoder`.
+
 ## [0.1.0] - 2026-08-06
 
 ### Added

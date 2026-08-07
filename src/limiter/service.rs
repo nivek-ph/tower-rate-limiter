@@ -5,12 +5,14 @@ use std::sync::Arc;
 use http::{Request, Response};
 use tower::Service;
 
-use super::builder::RateLimitConfig;
-use super::charge::{ResponseFactory, ResponseReason};
-use super::future::RateLimitFuture;
-use super::key_extractor::KeyExtractor;
-use super::limit::LimitProvider;
-use super::store::Store;
+use super::{
+    builder::{RateLimitConfig, check_skip_predicate},
+    future::RateLimitFuture,
+    key_extractor::KeyExtractor,
+    limit::LimitProvider,
+    response::ResponseFactory,
+    store::Store,
+};
 
 /// Tower service produced by [`super::RateLimitLayer`].
 #[must_use]
@@ -39,28 +41,41 @@ where
     type Error = Inner::Error;
     type Future = RateLimitFuture<ReqBody, Inner, S, P::Future, S::Future, Inner::Future, F>;
 
-    fn poll_ready(
-        &mut self,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
     fn call(&mut self, request: Request<ReqBody>) -> Self::Future {
         let replacement = self.inner.clone();
         let inner = std::mem::replace(&mut self.inner, replacement);
-        let key = match self.key_extractor.extract(&request) {
-            Ok(key) => key,
-            Err(error) => {
-                return RateLimitFuture::ready(
-                    self.response_factory
-                        .build(request, ResponseReason::Error(error)),
+
+        // Check if the request should be skipped.
+        let request = match check_skip_predicate(self.config.skip_predicate.as_ref(), request) {
+            (true, request) => {
+                return RateLimitFuture::skipped(
+                    request,
                     inner,
                     self.store.clone(),
                     Arc::clone(&self.config),
                     self.response_factory.clone(),
                 );
-            }
+            },
+            (false, request) => request,
+        };
+
+        // Extract the key.
+        let key = match self.key_extractor.extract(&request) {
+            Ok(key) => key,
+            Err(error) => {
+                return RateLimitFuture::error(
+                    request,
+                    error,
+                    inner,
+                    self.store.clone(),
+                    Arc::clone(&self.config),
+                    self.response_factory.clone(),
+                );
+            },
         };
 
         let limit_future = self.limit_provider.limit(&request);
