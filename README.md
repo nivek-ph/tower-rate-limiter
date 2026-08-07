@@ -2,9 +2,9 @@
 
 Keyed HTTP rate limiting middleware for Tower.
 
-[Website](https://nivek-ph.github.io/tower-rate-limiter/) ·
-[API documentation](https://docs.rs/tower-rate-limiter) ·
-[crates.io](https://crates.io/crates/tower-rate-limiter)
+- [Website](https://nivek-ph.github.io/tower-rate-limiter/)
+- [crates.io](https://crates.io/crates/tower-rate-limiter)
+- [docs.rs](https://docs.rs/tower-rate-limiter)
 
 Each `RateLimitLayer` extracts a key from the request, resolves a quota, increments a Store, and
 lets the rate-limit algorithm decide whether to call the ready inner service or return an immediate

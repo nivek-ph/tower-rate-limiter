@@ -15,16 +15,24 @@ tower-rate-limiter = { version = "0.1", features = ["axum", "memory"] }
 `IpKeyExtractor` can then read Axum's `ConnectInfo<SocketAddr>`. The server must supply connection
 information when serving the router:
 
-```rust
+```rust,ignore
 {{#include ../examples/axum_memory.rs:serve}}
 ```
 
-See the complete [`axum_memory` example](https://github.com/nivek-ph/tower-rate-limiter/blob/main/examples/axum_memory.rs)
-for application-wide and route-scoped policies.
+See [Axum with nested policies](examples/axum-memory.md) for the complete source.
+
+If `ConnectInfo` is missing, `IpKeyExtractor` returns a key error with code
+`peer_ip_unavailable`. Enabling the feature alone is not enough; the server construction shown
+above is what inserts the peer address.
 
 Forwarding headers are untrusted input. If the application sits behind a proxy, establish and test
 its proxy trust policy before producing a forwarded client address; the crate does not do this
 implicitly.
+
+The [trusted forwarded addresses example](examples/axum-forwarded.md) shows application-owned
+parsing for a deployment where Nginx strips client-provided forwarding headers and writes a trusted
+value. Copying the parser without the matching proxy configuration would allow clients to choose
+their own rate-limit identity.
 
 ## Redis
 
@@ -41,22 +49,23 @@ continues to own URL parsing, connection setup, reconnection strategy, and shutd
 One Lua operation increments usage and starts the TTL only on the first increment. A missing or
 non-positive TTL is surfaced as a Store error rather than repaired implicitly.
 
-See [`axum_redis`](https://github.com/nivek-ph/tower-rate-limiter/blob/main/examples/axum_redis.rs)
-for connection setup, namespacing, a shared Store, and custom error responses.
+Redis adds an `rl:` transport marker and the optional namespace after it receives the scoped key.
+Use a namespace to separate deployments or applications sharing one Redis database. Namespace is a
+transport concern; use distinct policy names for distinct rate-limit policies.
 
-## Build and publish this site
+See [Axum with Redis](examples/axum-redis.md) for complete connection setup, namespacing, a shared
+Store, and custom error responses.
 
-Preview the site locally while editing:
+### Choosing a Store
 
-```sh
-mdbook serve --open
-```
+| Requirement | `MemoryStore` | `RedisStore` |
+| --- | --- | --- |
+| Single process | yes | yes |
+| Counters shared across replicas | no | yes |
+| External service required | no | yes |
+| Survives process restart | no | usually, subject to Redis persistence |
+| Runtime dependency in the adapter | none | Tokio-compatible Redis connection |
 
-Generate static files for any web server:
-
-```sh
-mdbook build
-```
-
-The output is written to `book/`. It can be deployed to GitHub Pages or any static hosting service;
-no Rust process is needed in production.
+Cloning `MemoryStore` shares its in-process state. Creating separate `MemoryStore::new()` values
+creates separate counter sets. With multiple application replicas, each in-memory Store enforces
+its own quota, so the effective aggregate allowance can grow with replica count.
