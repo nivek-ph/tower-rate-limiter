@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.0...v0.1.1) - 2026-08-07
+
+### Added
+
+- unify rate-limit responses and configuration ([#2](https://github.com/nivek-ph/tower-rate-limiter/pull/2))
+
 ### Added
 
 - Add request bypass predicates through `RateLimitBuilder::skip`.
