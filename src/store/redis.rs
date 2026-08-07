@@ -137,13 +137,13 @@ impl Future for RedisStoreFuture {
 }
 
 fn checked_window_millis(window: Duration) -> Result<i64, RateLimitError> {
-    if window.is_zero() {
+    let window_millis = window.as_millis();
+    if window_millis == 0 {
         return Err(RateLimitError::Store(
             String::from("redis_invalid_window"),
-            String::from("Redis window must be non-zero"),
+            String::from("Redis window must be at least one millisecond"),
         ));
     }
-    let window_millis = window.as_millis();
     if window_millis > i64::MAX as u128 {
         return Err(RateLimitError::Store(
             String::from("redis_window_too_large"),
@@ -210,6 +210,10 @@ mod tests {
     fn window_must_be_representable_as_positive_redis_milliseconds() {
         assert!(matches!(
             checked_window_millis(Duration::ZERO),
+            Err(RateLimitError::Store(code, _)) if code == "redis_invalid_window"
+        ));
+        assert!(matches!(
+            checked_window_millis(Duration::from_nanos(1)),
             Err(RateLimitError::Store(code, _)) if code == "redis_invalid_window"
         ));
         assert_eq!(
