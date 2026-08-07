@@ -1,3 +1,7 @@
 [workspace]
 release_always = false
+
+# Prepare a release only for features, fixes, performance work, and breaking changes.
+release_commits = '^(?:(feat|fix|perf)[(:!]|[^:]+!:)'
+
 pr_labels = ["release"]
