@@ -31,6 +31,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let address: SocketAddr = "127.0.0.1:3000".parse()?;
     let listener = tokio::net::TcpListener::bind(address).await?;
     println!("listening on http://{address}");
+    // ANCHOR: serve
     axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>()).await?;
+    // ANCHOR_END: serve
     Ok(())
 }
