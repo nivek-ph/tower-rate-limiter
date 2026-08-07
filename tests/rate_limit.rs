@@ -11,8 +11,8 @@ use std::{
 use http::{Request, Response, StatusCode};
 use tower::{Layer, Service};
 use tower_rate_limiter::{
-    KeyExtractor, LimitProvider, RateLimitContext, RateLimitError, RateLimitLayer, ResponseFactory, ResponseReason,
-    Store, Usage,
+    KeyExtractor, LimitProvider, RateLimitContext, RateLimitError, RateLimitFields, RateLimitLayer, ResponseFactory,
+    ResponseReason, Store, Usage,
 };
 
 fn block_on<F: Future>(future: F) -> F::Output {
@@ -519,7 +519,7 @@ fn request_flow_resolves_key_then_limit_then_store() {
 }
 
 #[test]
-fn key_encoding_runs_after_key_scoping_before_store() {
+fn key_encoder_runs_after_key_scoping_before_store() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let store = FakeStore::default();
     let stored_keys = Arc::clone(&store.counts);
@@ -532,7 +532,7 @@ fn key_encoding_runs_after_key_scoping_before_store() {
     })
     .policy_name("api")
     .window(Duration::from_secs(60))
-    .with_key_encoding(move |key| {
+    .with_key_encoder(move |key| {
         encoding_events.lock().expect("order lock").push("encoding");
         assert_eq!(key, "api:caller");
         format!("encoded:{key}")
@@ -554,7 +554,7 @@ fn key_encoding_runs_after_key_scoping_before_store() {
 }
 
 #[test]
-fn key_encoding_is_raw_by_default() {
+fn scoped_key_is_raw_without_a_key_encoder() {
     let store = FakeStore::default();
     let stored_keys = Arc::clone(&store.counts);
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
@@ -588,13 +588,13 @@ fn scoped_key_escapes_colons_and_percents_before_store() {
 }
 
 #[test]
-fn key_encoding_runs_on_escaped_scoped_key() {
+fn key_encoder_receives_the_escaped_scoped_key() {
     let store = FakeStore::default();
     let stored_keys = Arc::clone(&store.counts);
     let mut service = RateLimitLayer::builder(StaticKey("c%d:e"))
         .policy_name("a:b")
         .window(Duration::from_secs(60))
-        .with_key_encoding(|key| {
+        .with_key_encoder(|key| {
             assert_eq!(key, "a%3Ab:c%25d%3Ae");
             format!("encoded:{key}")
         })
@@ -817,10 +817,34 @@ fn nested_layers_append_policy_fields_and_context_entries() {
 }
 
 #[test]
+fn draft11_is_the_default_rate_limit_fields_revision() {
+    assert_eq!(RateLimitFields::default(), RateLimitFields::Draft11);
+}
+
+#[test]
+fn draft7_fields_use_the_legacy_dictionary_format() {
+    let mut service = RateLimitLayer::builder(StaticKey("caller"))
+        .limit(1)
+        .rate_limit_fields(RateLimitFields::Draft7)
+        .with_store(FakeStore::default())
+        .build()
+        .expect("valid layer")
+        .layer(OkService::default());
+
+    let response = call_service(&mut service, request()).expect("allowed response");
+
+    assert_eq!(response.headers().get("RateLimit-Policy").unwrap(), "1;w=60");
+    assert_eq!(
+        response.headers().get("RateLimit").unwrap(),
+        "limit=1, remaining=0, reset=60"
+    );
+}
+
+#[test]
 fn disabling_fields_keeps_retry_after_on_blocked_responses() {
     let mut service = RateLimitLayer::builder(StaticKey("caller"))
         .limit(1)
-        .emit_headers(false)
+        .rate_limit_fields(RateLimitFields::Disabled)
         .with_store(FakeStore::default())
         .build()
         .expect("valid layer")

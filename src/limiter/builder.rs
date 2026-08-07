@@ -8,7 +8,7 @@ use super::{
     error::ConfigError,
     layer::RateLimitLayer,
     limit::LimitProvider,
-    response::DefaultResponseFactory,
+    response::{DefaultResponseFactory, RateLimitFields},
     store::{Store, StoreFailureMode},
 };
 
@@ -16,7 +16,7 @@ use super::{
 const MINIMUM_WINDOW: Duration = Duration::from_millis(1);
 
 /// A callback to encode the scoped key before passing it to the [`Store`].
-pub(crate) type KeyEncoding = Box<dyn Fn(&str) -> String + Send + Sync>;
+pub(crate) type KeyEncoder = Box<dyn Fn(&str) -> String + Send + Sync>;
 
 /// A callback that decides whether a request bypasses rate limiting.
 pub(crate) type SkipPredicate = Box<dyn Fn(&Request<()>) -> bool + Send + Sync>;
@@ -55,10 +55,10 @@ impl<K> RateLimitBuilder<K> {
             config: RateLimitConfig {
                 policy_name: String::from("default-policy"),
                 window: Duration::from_secs(60),
-                key_encoding: None,
+                key_encoder: None,
                 skip_predicate: None,
                 store_failure_mode: StoreFailureMode::default(),
-                emit_headers: true,
+                rate_limit_fields: RateLimitFields::default(),
             },
         }
     }
@@ -155,11 +155,11 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
     /// non-blocking, free of I/O, collision-resistant for the caller's key space, and
     /// non-panicking. Without this method, the complete scoped key is passed to the Store
     /// unchanged.
-    pub fn with_key_encoding<E>(mut self, encoder: E) -> Self
+    pub fn with_key_encoder<E>(mut self, encoder: E) -> Self
     where
         E: Fn(&str) -> String + Send + Sync + 'static,
     {
-        self.config.key_encoding = Some(Box::new(encoder));
+        self.config.key_encoder = Some(Box::new(encoder));
         self
     }
 
@@ -183,9 +183,9 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
         self
     }
 
-    /// Enable or disable the two IETF RateLimit response fields.
-    pub fn emit_headers(mut self, emit: bool) -> Self {
-        self.config.emit_headers = emit;
+    /// Select the Rate Limit Fields revision emitted in responses.
+    pub fn rate_limit_fields(mut self, fields: RateLimitFields) -> Self {
+        self.config.rate_limit_fields = fields;
         self
     }
 
@@ -227,12 +227,18 @@ where
 
 /// Immutable configuration shared by every service produced from a layer.
 pub(crate) struct RateLimitConfig {
+    /// The stable policy identifier used in the scoped key and response metadata.
     pub(crate) policy_name: String,
+    /// The fixed-window duration.
     pub(crate) window: Duration,
-    pub(crate) key_encoding: Option<KeyEncoding>,
+    /// Encode the scoped key before passing it to the [`Store`].
+    pub(crate) key_encoder: Option<KeyEncoder>,
+    /// Decide whether a request bypasses rate limiting.
     pub(crate) skip_predicate: Option<SkipPredicate>,
+    /// Select the mode to use when the Store fails.
     pub(crate) store_failure_mode: StoreFailureMode,
-    pub(crate) emit_headers: bool,
+    /// Select the [`RateLimitFields`] revision emitted in responses.
+    pub(crate) rate_limit_fields: RateLimitFields,
 }
 
 impl fmt::Debug for RateLimitConfig {
@@ -240,10 +246,10 @@ impl fmt::Debug for RateLimitConfig {
         f.debug_struct("RateLimitConfig")
             .field("policy_name", &self.policy_name)
             .field("window", &self.window)
-            .field("key_encoding", &self.key_encoding.as_ref().map(|_| "<callback>"))
-            .field("skip_predicate", &self.skip_predicate.as_ref().map(|_| "<callback>"))
+            .field("has_key_encoder", &self.key_encoder.is_some())
+            .field("has_skip_predicate", &self.skip_predicate.is_some())
             .field("store_failure_mode", &self.store_failure_mode)
-            .field("emit_headers", &self.emit_headers)
+            .field("rate_limit_fields", &self.rate_limit_fields)
             .finish()
     }
 }

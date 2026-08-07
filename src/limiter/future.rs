@@ -152,7 +152,7 @@ where
                         },
                         Ok(limit) => {
                             let mut key = make_key(&this.config.policy_name, &key);
-                            if let Some(encoder) = this.config.key_encoding.as_ref() {
+                            if let Some(encoder) = this.config.key_encoder.as_ref() {
                                 key = encoder(&key);
                             }
                             let store_future = this.store.increment(&key, this.config.window);

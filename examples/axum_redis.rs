@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .policy_name("global-limit")
         .limit(10)
         .window(Duration::from_secs(60))
-        .with_key_encoding(|k| k.to_string())
+        .with_key_encoder(|k| k.to_string())
         .with_store(store.clone())
         .build()?;
 
@@ -87,7 +87,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .policy_name("user-limit")
         .limit(3)
         .window(Duration::from_secs(60))
-        .with_key_encoding(|k| k.to_string())
+        .with_key_encoder(|k| k.to_string())
         .response_factory(AuthResponseFactory)
         .with_store(store)
         .build()?;

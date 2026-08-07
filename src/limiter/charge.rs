@@ -10,7 +10,7 @@ use std::time::Duration;
 
 use http::Request;
 
-use super::{RateLimitConfig, error::RateLimitError, store::Usage};
+use super::{RateLimitConfig, error::RateLimitError, response::RateLimitFields, store::Usage};
 
 /// One policy's rate-limit state exposed to a downstream handler.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -61,7 +61,7 @@ pub(super) struct ChargeMetadata {
     pub(super) limit: u64,
     pub(super) usage: Usage,
     pub(super) window: Duration,
-    pub(super) emit_headers: bool,
+    pub(super) rate_limit_fields: RateLimitFields,
 }
 
 impl ChargeMetadata {
@@ -76,8 +76,8 @@ impl ChargeMetadata {
         }
     }
 
-    /// the remaining quota.
-    fn remaining(&self) -> u64 {
+    /// Return the remaining quota after the current request.
+    pub(super) fn remaining(&self) -> u64 {
         self.limit.saturating_sub(self.usage.used)
     }
 }
@@ -105,7 +105,7 @@ impl ChargeOutcome {
             limit,
             usage,
             window: config.window,
-            emit_headers: config.emit_headers,
+            rate_limit_fields: config.rate_limit_fields,
         };
         Ok(if usage.used > limit {
             Self::RateLimited(metadata)

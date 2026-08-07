@@ -8,8 +8,8 @@ pub mod store;
 
 pub use limiter::{
     ConfigError, DefaultResponseFactory, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitBuilder,
-    RateLimitContext, RateLimitError, RateLimitFuture, RateLimitLayer, RateLimitPolicy, ResponseFactory,
-    ResponseReason, Store, StoreFailureMode, Usage,
+    RateLimitContext, RateLimitError, RateLimitFields, RateLimitFuture, RateLimitLayer, RateLimitPolicy,
+    ResponseFactory, ResponseReason, Store, StoreFailureMode, Usage,
 };
 
 #[cfg(feature = "memory")]

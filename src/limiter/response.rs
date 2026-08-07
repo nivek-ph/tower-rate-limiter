@@ -13,6 +13,32 @@ const RATE_LIMIT: HeaderName = HeaderName::from_static("ratelimit");
 const RATE_LIMIT_POLICY: HeaderName = HeaderName::from_static("ratelimit-policy");
 const RETRY_AFTER: HeaderName = HeaderName::from_static("retry-after");
 
+/// The Rate Limit Fields revision emitted in responses.
+///
+/// Draft 7 represents `RateLimit` as a dictionary containing `limit`, `remaining`, and `reset`.
+/// Its `RateLimit-Policy` field contains the quota and window without a policy identifier.
+///
+/// Draft 11 represents both fields as lists of named items. This crate emits its fixed-window
+/// `q`/`w` and `r`/`t` parameters; optional quota-unit (`qu`) and partition-key (`pk`) parameters
+/// are not emitted.
+///
+/// See the field definitions for [draft 7] and [draft 11].
+///
+/// [draft 7]: https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-07#name-ratelimit-header-field-def
+/// [draft 11]: https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-11#name-ratelimit-policy-field
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum RateLimitFields {
+    /// Emit fields compatible with draft 7.
+    Draft7,
+    /// Emit fields compatible with draft 11.
+    #[default]
+    Draft11,
+    /// Do not emit `RateLimit` or `RateLimit-Policy` fields.
+    /// Rate-limited responses still include `Retry-After`.
+    Disabled,
+}
+
 /// The structured reason passed to a [`ResponseFactory`].
 #[derive(Debug)]
 pub enum ResponseReason {
@@ -97,7 +123,8 @@ impl<B> MiddlewareResponse<B> {
 /// Decorate an allowed (or fail-open) inner response with Rate Limit Fields.
 ///
 /// `None` means no quota metadata is available after bypass or fail-open, so no fields are
-/// written. When present, fields follow `emit_headers`; `Retry-After` is never added on this path.
+/// written. When present, fields follow [`RateLimitFields`]; `Retry-After` is never added on this
+/// path.
 pub(super) fn append_inner_response_headers<B>(response: Response<B>, metadata: Option<ChargeMetadata>) -> Response<B> {
     match metadata {
         Some(metadata) => append_rate_limit_fields(response, &metadata),
@@ -107,7 +134,7 @@ pub(super) fn append_inner_response_headers<B>(response: Response<B>, metadata: 
 
 /// Decorate a rate-limited middleware response with Rate Limit Fields and Retry-After.
 ///
-/// Rate Limit Fields still respect `emit_headers`. `Retry-After` is always added.
+/// Rate Limit Fields still respect [`RateLimitFields`]. `Retry-After` is always added.
 fn append_rate_limited_response_headers<B>(response: Response<B>, metadata: ChargeMetadata) -> Response<B> {
     let mut response = append_rate_limit_fields(response, &metadata);
     append_header(
@@ -119,27 +146,43 @@ fn append_rate_limited_response_headers<B>(response: Response<B>, metadata: Char
 }
 
 /// Shared Rate Limit / RateLimit-Policy field writer.
-fn append_rate_limit_fields<B>(mut response: Response<B>, metadata: &ChargeMetadata) -> Response<B> {
-    if !metadata.emit_headers {
+fn append_rate_limit_fields<B>(response: Response<B>, metadata: &ChargeMetadata) -> Response<B> {
+    let Some((policy, rate_limit)) = format_rate_limit_fields(metadata) else {
         return response;
+    };
+
+    let mut response = response;
+    append_header(&mut response, RATE_LIMIT_POLICY, &policy);
+    append_header(&mut response, RATE_LIMIT, &rate_limit);
+    response
+}
+
+/// Format Rate Limit Fields for the configured revision.
+fn format_rate_limit_fields(metadata: &ChargeMetadata) -> Option<(String, String)> {
+    if metadata.rate_limit_fields == RateLimitFields::Disabled {
+        return None;
     }
 
-    let name = &metadata.policy_name;
-    append_header(
-        &mut response,
-        RATE_LIMIT_POLICY,
-        &format!(r#""{name}";q={};w={}"#, metadata.limit, ceil_seconds(metadata.window)),
-    );
-    append_header(
-        &mut response,
-        RATE_LIMIT,
-        &format!(
-            r#""{name}";r={};t={}"#,
-            metadata.limit.saturating_sub(metadata.usage.used),
-            ceil_seconds(metadata.usage.reset_after)
+    let limit = metadata.limit;
+    let remaining = metadata.remaining();
+    let reset_after = ceil_seconds(metadata.usage.reset_after);
+    let window = ceil_seconds(metadata.window);
+
+    Some(match metadata.rate_limit_fields {
+        RateLimitFields::Draft7 => (
+            format!("{limit};w={window}"),
+            format!("limit={limit}, remaining={remaining}, reset={reset_after}"),
         ),
-    );
-    response
+        RateLimitFields::Draft11 => {
+            let policy_name = &metadata.policy_name;
+
+            (
+                format!(r#""{policy_name}";q={limit};w={window}"#),
+                format!(r#""{policy_name}";r={remaining};t={reset_after}"#),
+            )
+        },
+        RateLimitFields::Disabled => return None,
+    })
 }
 
 /// Append a header to the response.
@@ -149,6 +192,7 @@ fn append_header<B>(response: &mut Response<B>, name: HeaderName, value: &str) {
     }
 }
 
+/// Ceil the duration to the nearest second.
 fn ceil_seconds(duration: Duration) -> u64 {
     duration
         .as_secs()

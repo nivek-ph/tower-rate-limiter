@@ -44,7 +44,7 @@ Builder defaults:
 | Window           | 60 seconds       |
 | Policy name      | `default-policy` |
 | Store errors     | Reject           |
-| RateLimit fields | Enabled          |
+| RateLimit fields | Draft 11         |
 
 
 The Store is always explicit via `.with_store(...)`.
@@ -141,15 +141,32 @@ extension instead of matching raw credentials in this predicate.
 
 ## RateLimit fields and context
 
-When enabled, allowed and rate-limited responses include the current draft-11 fields:
+By default, allowed and rate-limited responses include fields following the draft-11 definitions
+of [`RateLimit-Policy`](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-11#name-ratelimit-policy-field)
+and [`RateLimit`](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-11#name-ratelimit-field):
 
 ```text
 RateLimit-Policy: "<policy>";q=<limit>;w=<window-seconds>
-RateLimit: "<policy>";r=<remaining>;t=<reset-seconds>
+RateLimit: "<policy>";r=<remaining>;t=<effective-window-seconds>
 ```
 
-Rate-limited responses also include `Retry-After`, even when `.emit_headers(false)` disables the
-two RateLimit fields. Active durations are rounded up to whole seconds.
+`RateLimit-Policy` advertises the configured fixed-window quota: `q` is the request limit and `w`
+is the window in seconds. `RateLimit` reports the current service limit: `r` is the remaining
+quota after the current request and `t` is the effective window in seconds, derived from the
+Store's `reset_after`. The optional draft-11 `qu` (quota unit) and `pk` (partition key) parameters
+are not emitted; omitting `qu` means the default quota unit is requests.
+
+Select the older [draft 7](https://datatracker.ietf.org/doc/html/draft-ietf-httpapi-ratelimit-headers-07#name-ratelimit-header-field-def)
+format with `.rate_limit_fields(RateLimitFields::Draft7)`:
+
+```text
+RateLimit-Policy: <limit>;w=<window-seconds>
+RateLimit: limit=<limit>, remaining=<remaining>, reset=<reset-seconds>
+```
+
+Draft 7 does not include the configured policy name in either field. Omit both fields with
+`.rate_limit_fields(RateLimitFields::Disabled)`; rate-limited responses still include
+`Retry-After`. Active durations are rounded up to whole seconds for both revisions.
 
 Allowed requests receive `RateLimitContext` in their request extensions. Its policies expose:
 
@@ -182,7 +199,7 @@ current usage plus `PTTL`. A missing or non-positive TTL is a Store error instea
 repair. Redis adds the `rl:` marker and the optional namespace to the key it receives.
 
 Applications that need hashing or another representation can use
-`RateLimitBuilder::with_key_encoding` to transform the scoped key before it reaches any Store. The
+`RateLimitBuilder::with_key_encoder` to transform the scoped key before it reaches any Store. The
 encoder must be deterministic, collision-resistant for the application's key space, non-blocking,
 and free of I/O.
 

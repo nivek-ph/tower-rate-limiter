@@ -22,6 +22,6 @@ pub use future::RateLimitFuture;
 pub use key_extractor::{IpKeyExtractor, KeyExtractor};
 pub use layer::RateLimitLayer;
 pub use limit::LimitProvider;
-pub use response::{DefaultResponseFactory, ResponseFactory, ResponseReason};
+pub use response::{DefaultResponseFactory, RateLimitFields, ResponseFactory, ResponseReason};
 pub use service::RateLimitService;
 pub use store::{Store, StoreFailureMode, Usage};
