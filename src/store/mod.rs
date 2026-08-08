@@ -4,7 +4,7 @@
 mod memory;
 
 #[cfg(feature = "memory")]
-pub use memory::MemoryStore;
+pub use memory::{MemoryStore, MemoryStoreError};
 
 #[cfg(feature = "redis")]
 mod redis;

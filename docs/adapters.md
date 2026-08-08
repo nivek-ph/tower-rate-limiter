@@ -69,3 +69,6 @@ Store, and custom error responses.
 Cloning `MemoryStore` shares its in-process state. Creating separate `MemoryStore::new()` values
 creates separate counter sets. With multiple application replicas, each in-memory Store enforces
 its own quota, so the effective aggregate allowance can grow with replica count.
+
+Each cached entry expires with its fixed window. Moka treats the entry as absent after that point
+and eventually removes it through cache maintenance without a background task.
