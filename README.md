@@ -53,6 +53,9 @@ Builder defaults:
 
 The Store is always explicit via `.with_store(...)`.
 
+`MemoryStore` configures each cached entry to expire with its fixed window, so inactive keys are
+eventually removed without a background task.
+
 ## Request flow
 
 ```text

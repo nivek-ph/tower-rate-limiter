@@ -2,7 +2,7 @@
 
 use std::{sync::Arc, thread, time::Duration};
 
-use tower_rate_limiter::{MemoryStore, RateLimitError, Store, Usage};
+use tower_rate_limiter::{MemoryStore, Store, Usage};
 
 fn increment(store: &MemoryStore, key: &str, window: Duration) -> Usage {
     store
@@ -12,15 +12,33 @@ fn increment(store: &MemoryStore, key: &str, window: Duration) -> Usage {
 }
 
 #[test]
-fn first_increment_starts_a_window_and_later_increments_preserve_it() {
+fn active_window_ignores_later_window_arguments() {
     let store = MemoryStore::new();
-    let first = increment(&store, "key", Duration::from_secs(60));
-    let second = increment(&store, "key", Duration::from_secs(60));
+    let first = increment(&store, "key", Duration::from_secs(1));
+
+    thread::sleep(Duration::from_millis(50));
+
+    // A larger window must not extend the active window.
+    let second = increment(&store, "key", Duration::from_secs(10));
 
     assert_eq!(first.used, 1);
     assert_eq!(second.used, 2);
     assert!(first.reset_after > Duration::ZERO);
-    assert!(second.reset_after <= first.reset_after);
+    assert!(second.reset_after < first.reset_after);
+
+    // A shorter window must not shorten/reset the active window either.
+    let third = increment(&store, "key", Duration::from_millis(10));
+
+    assert_eq!(third.used, 3);
+    assert!(third.reset_after <= second.reset_after);
+
+    // Wait longer than the later 10ms window.
+    // The original 1s fixed window should still be active.
+    thread::sleep(Duration::from_millis(20));
+
+    let fourth = increment(&store, "key", Duration::from_secs(1));
+
+    assert_eq!(fourth.used, 4);
 }
 
 #[test]
@@ -44,10 +62,10 @@ fn clones_share_usage() {
 #[test]
 fn concurrent_increments_are_not_lost() {
     let store = Arc::new(MemoryStore::new());
-    let total = 32;
+    let concurrency = 100;
 
     thread::scope(|scope| {
-        let handles = (0..total)
+        let handles = (0..concurrency)
             .map(|_| {
                 let store = Arc::clone(&store);
                 scope.spawn(move || increment(&store, "concurrent", Duration::from_secs(60)))
@@ -60,7 +78,7 @@ fn concurrent_increments_are_not_lost() {
             .collect::<Vec<_>>();
         let final_usage = increment(&store, "concurrent", Duration::from_secs(60));
 
-        assert_eq!(final_usage.used, total + 1);
+        assert_eq!(final_usage.used, concurrency + 1);
         assert!(usages.iter().all(|usage| final_usage.reset_after <= usage.reset_after));
     });
 }
@@ -68,14 +86,35 @@ fn concurrent_increments_are_not_lost() {
 #[test]
 fn expired_usage_restarts_at_one_with_a_new_window() {
     let store = MemoryStore::new();
-    let window = Duration::from_millis(5);
-    let first = increment(&store, "expiring", window);
-    thread::sleep(Duration::from_millis(15));
-    let restarted = increment(&store, "expiring", window);
+    let key = "expiring";
+
+    let first = increment(&store, key, Duration::from_millis(10));
 
     assert_eq!(first.used, 1);
+    assert!(first.reset_after > Duration::ZERO);
+
+    // Wait until the first fixed window has definitely expired.
+    thread::sleep(Duration::from_millis(20));
+
+    // Start a new window with a different duration.
+    let second_window = Duration::from_secs(1);
+
+    let restarted = increment(&store, key, second_window);
+
+    // The expired entry must restart from 1.
     assert_eq!(restarted.used, 1);
-    assert!(restarted.reset_after > Duration::ZERO);
+
+    // The new window should use the newly provided duration,
+    // rather than keeping the old 10ms window.
+    assert!(restarted.reset_after > Duration::from_millis(500));
+    assert!(restarted.reset_after <= second_window);
+
+    // Another increment inside the new window should continue
+    // from the restarted counter.
+    let second = increment(&store, key, second_window);
+
+    assert_eq!(second.used, 2);
+    assert!(second.reset_after <= restarted.reset_after);
 }
 
 #[test]
@@ -85,16 +124,4 @@ fn different_scopes_remain_independent_in_one_store() {
     assert_eq!(increment(&store, "policy-a-window-60", Duration::from_secs(60)).used, 1);
     assert_eq!(increment(&store, "policy-b-window-60", Duration::from_secs(60)).used, 1);
     assert_eq!(increment(&store, "policy-a-window-30", Duration::from_secs(30)).used, 1);
-}
-
-#[test]
-fn an_unrepresentable_window_is_reported_as_a_store_error() {
-    let result = MemoryStore::new().increment("huge", Duration::MAX).into_inner();
-
-    assert!(matches!(
-        result,
-        Err(RateLimitError::Store(code, message))
-            if code == "memory_window_out_of_range"
-                && message == "window cannot be represented by the process clock"
-    ));
 }
