@@ -15,5 +15,5 @@ pub use limiter::{
 #[cfg(feature = "memory")]
 pub use store::{MemoryStore, MemoryStoreError};
 
-#[cfg(feature = "redis")]
-pub use store::{RedisStore, RedisStoreFuture};
+#[cfg(all(feature = "redis", any(feature = "runtime-tokio", feature = "runtime-smol")))]
+pub use store::{RedisStore, RedisStoreError};

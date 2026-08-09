@@ -64,6 +64,44 @@ jobs:
       - name: Run doc tests
         run: cargo test --doc --all-features
 
+  redis-test:
+    name: Redis (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Tokio / transaction
+            features: redis,runtime-tokio
+          - name: Tokio / Lua
+            features: redis-lua,runtime-tokio
+          - name: Smol / transaction
+            features: redis,runtime-smol
+          - name: Smol / Lua
+            features: redis-lua,runtime-smol
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      REDIS_URL: redis://127.0.0.1:6379/
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mozilla-actions/sccache-action@v0.0.9
+        with:
+          version: "v0.10.0"
+      - uses: Swatinem/rust-cache@v2
+        with:
+          cache-on-failure: true
+      - name: Run Redis integration test
+        run: cargo test --no-default-features --features "${{ matrix.features }}" --test redis_store
+
   msrv:
     name: MSRV Check
     runs-on: ubuntu-latest
