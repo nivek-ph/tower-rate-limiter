@@ -18,16 +18,22 @@ The crate is Tower-first. Axum and Redis are optional adapters.
 [dependencies]
 tower-rate-limiter = "0.1"
 
-# Optional adapters
-# tower-rate-limiter = { version = "0.1", features = ["axum", "redis"] }
+# Optional adapters and Redis execution properties
+# tower-rate-limiter = { version = "0.1", default-features = false, features = ["redis", "runtime-smol"] }
 ```
 
 
-| Feature            | Provides                                                               |
-| ------------------ | ---------------------------------------------------------------------- |
-| `memory` (default) | Runtime-independent, process-local `MemoryStore`                       |
-| `redis`            | `RedisStore` backed by an existing Redis multiplexed connection        |
-| `axum`             | Support for reading Axum `ConnectInfo<SocketAddr>` in `IpKeyExtractor` |
+| Feature                   | Provides                                                               |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `redis`                   | The Redis Store adapter and Redis dependency                           |
+| `redis-lua`               | Use Lua instead of `MULTI`/`EXEC` for the atomic increment             |
+| `runtime-tokio`           | Tokio-compatible Redis async runtime                                   |
+| `runtime-smol`            | Smol-compatible Redis async runtime                                    |
+| `memory` (default)        | Runtime-independent, process-local `MemoryStore`                       |
+| `axum`                    | Support for reading Axum `ConnectInfo<SocketAddr>` in `IpKeyExtractor` |
+
+`redis`, its increment implementation, and its async runtime are independent properties. A usable
+Redis adapter combines `redis` or `redis-lua` with `runtime-tokio` or `runtime-smol`.
 
 
 With `--no-default-features`, applications can provide their own `Store`, `KeyExtractor`, and
@@ -201,9 +207,11 @@ open connections, or own connection shutdown.
 See [`axum_redis`](examples/axum_redis.rs) for connection setup, namespacing, a shared Store, and
 custom error responses.
 
-One Lua operation performs `INCR`, sets `PEXPIRE` only on the first increment, and returns the
-current usage plus `PTTL`. A missing or non-positive TTL is a Store error instead of an implicit
-repair. Redis adds the `rl:` marker and the optional namespace to the key it receives.
+Selecting `redis` without `redis-lua` uses one `MULTI`/`EXEC` transaction to initialize the counter
+with `SET NX PX`, increment it, and return its `PTTL`. Adding `redis-lua` uses one Lua operation with
+the same fixed-window semantics. Either implementation works with `runtime-tokio` or
+`runtime-smol`. A missing or non-positive TTL is a Store error instead of an implicit repair. Redis
+adds the `rl:` marker and the optional namespace to the key it receives.
 
 Applications that need hashing or another representation can use
 `RateLimitBuilder::with_key_encoder` to transform the scoped key before it reaches any Store. The
@@ -227,7 +235,7 @@ cargo run --example tower_memory --features memory
 cargo run --example tower_dynamic --features memory
 cargo run --example axum_memory --features axum,memory
 cargo run --example axum_x_forwarded_for --features axum,memory
-cargo run --example axum_redis --features axum,redis
+cargo run --example axum_redis --features axum,redis,runtime-tokio
 ```
 
 
@@ -244,10 +252,10 @@ cargo doc --all-features --no-deps
 cargo package --allow-dirty --offline
 ```
 
-Redis adapter unit tests live with `RedisStore` and cover transport-key formatting and Lua
-result parsing. The CI test job starts Redis and verifies atomic fixed-window behavior through
-the public `Store` interface. Local `cargo test --all-features` requires `REDIS_URL` to point to a
-reachable test Redis server.
+Redis adapter unit tests live with `RedisStore` and cover transport-key formatting and increment
+result parsing. The CI test job starts Redis and verifies all four runtime/implementation
+combinations through the public `Store` interface. Local Redis integration tests require
+`REDIS_URL` to point to a reachable test Redis server.
 
 ## Scope
 

@@ -1,3 +1,5 @@
+#![cfg(all(feature = "redis", any(feature = "runtime-tokio", feature = "runtime-smol")))]
+
 use std::{env, time::Duration};
 
 use tower_rate_limiter::{RedisStore, Store};

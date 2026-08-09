@@ -6,8 +6,8 @@ mod memory;
 #[cfg(feature = "memory")]
 pub use memory::{MemoryStore, MemoryStoreError};
 
-#[cfg(feature = "redis")]
+#[cfg(all(feature = "redis", any(feature = "runtime-tokio", feature = "runtime-smol")))]
 mod redis;
 
-#[cfg(feature = "redis")]
-pub use redis::{RedisStore, RedisStoreFuture};
+#[cfg(all(feature = "redis", any(feature = "runtime-tokio", feature = "runtime-smol")))]
+pub use redis::{RedisStore, RedisStoreError, RedisStoreFuture};
