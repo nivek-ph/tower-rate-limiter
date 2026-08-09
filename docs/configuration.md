@@ -68,6 +68,18 @@ target is `tower_rate_limiter::store`; fields contain `policy_name`, `event=stor
 `failure_mode`, and `error_code`. Events deliberately omit the Client Key, Store Key, and diagnostic
 error message. The library emits events through the application's subscriber and never installs one.
 
+Enable the feature and add `tracing` as a direct application dependency when configuring a custom
+event level:
+
+```toml
+[dependencies]
+tower-rate-limiter = { version = "0.1", features = ["tracing"] }
+tracing = "0.1"
+```
+
+The feature enables Store-failure events inside `tower-rate-limiter`; the direct `tracing`
+dependency lets application code name values such as `tracing::Level::ERROR` in the builder call.
+
 ```mermaid
 %%{init: {"themeVariables": {"fontSize": "10px"}, "flowchart": {"curve": "basis", "useMaxWidth": false, "padding": 5, "nodeSpacing": 16, "rankSpacing": 20}}}%%
 flowchart TD

@@ -1,7 +1,7 @@
 #![cfg(feature = "tracing")]
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     convert::Infallible,
     fmt,
     future::{Future, Ready, ready},
@@ -13,7 +13,7 @@ use std::{
 
 use http::{Request, Response, StatusCode};
 use tower::{Layer, Service, ServiceExt};
-use tower_rate_limiter::{KeyExtractor, RateLimitError, RateLimitLayer, Store, StoreFailureMode, Usage};
+use tower_rate_limiter::{KeyExtractor, LimitProvider, RateLimitError, RateLimitLayer, Store, StoreFailureMode, Usage};
 use tracing::{
     Event, Metadata, Subscriber,
     field::{Field, Visit},
@@ -51,6 +51,48 @@ impl Store for FailingStore {
         ready(Err(RateLimitError::Store(
             String::from("test_store_failed"),
             String::from("redis://user:secret@example.invalid"),
+        )))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct InvalidUsageStore;
+
+impl Store for InvalidUsageStore {
+    type Future = Ready<Result<Usage, RateLimitError>>;
+
+    fn increment(&self, _key: &str, window: Duration) -> Self::Future {
+        ready(Ok(Usage {
+            used: 0,
+            reset_after: window,
+        }))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FailingKey;
+
+impl KeyExtractor for FailingKey {
+    type Key = &'static str;
+
+    fn extract<B>(&self, _request: &Request<B>) -> Result<Self::Key, RateLimitError> {
+        Err(RateLimitError::Key(
+            String::from("test_key_failed"),
+            String::from("key unavailable"),
+        ))
+    }
+}
+
+#[derive(Clone, Copy)]
+struct FailingLimit;
+
+impl LimitProvider for FailingLimit {
+    type Future = Ready<Result<u64, RateLimitError>>;
+
+    fn limit<B>(&self, _request: &Request<B>) -> Self::Future {
+        ready(Err(RateLimitError::Quota(
+            String::from("test_limit_failed"),
+            String::from("quota unavailable"),
         )))
     }
 }
@@ -198,6 +240,10 @@ fn store_failures_emit_structured_warnings_without_diagnostic_details() {
     for (event, expected_mode) in events.iter().zip(["allow", "reject"]) {
         assert_eq!(event.level, tracing::Level::WARN);
         assert_eq!(event.target, "tower_rate_limiter::store");
+        assert_eq!(
+            event.fields.keys().map(String::as_str).collect::<HashSet<_>>(),
+            HashSet::from(["message", "event", "policy_name", "failure_mode", "error_code"])
+        );
         assert_eq!(event.fields.get("event").map(String::as_str), Some("store_failure"));
         assert_eq!(event.fields.get("policy_name").map(String::as_str), Some("login"));
         assert_eq!(
@@ -215,4 +261,68 @@ fn store_failures_emit_structured_warnings_without_diagnostic_details() {
                 .all(|value| !value.contains("redis://") && !value.contains("secret"))
         );
     }
+}
+
+#[test]
+fn invalid_usage_emits_store_failure() {
+    let subscriber = EventSubscriber::default();
+    let events = Arc::clone(&subscriber.events);
+    let service = RateLimitLayer::builder(StaticKey)
+        .policy_name("login")
+        .with_store(InvalidUsageStore)
+        .build()
+        .expect("valid layer")
+        .layer(OkService);
+
+    tracing::subscriber::with_default(subscriber, || {
+        assert_eq!(
+            block_on(service.oneshot(Request::new(())))
+                .expect("infallible service")
+                .status(),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    });
+
+    let events = events.lock().expect("event lock");
+    assert_eq!(events.len(), 1);
+    assert_eq!(events[0].target, "tower_rate_limiter::store");
+    assert_eq!(events[0].fields.get("event").map(String::as_str), Some("store_failure"));
+    assert_eq!(
+        events[0].fields.get("error_code").map(String::as_str),
+        Some("invalid_usage")
+    );
+}
+
+#[test]
+fn key_and_quota_failures_do_not_emit_store_failure() {
+    let subscriber = EventSubscriber::default();
+    let events = Arc::clone(&subscriber.events);
+    let key_failure = RateLimitLayer::builder(FailingKey)
+        .with_store(FailingStore)
+        .build()
+        .expect("valid layer")
+        .layer(OkService);
+    let quota_failure = RateLimitLayer::builder(StaticKey)
+        .limit_provider(FailingLimit)
+        .with_store(FailingStore)
+        .build()
+        .expect("valid layer")
+        .layer(OkService);
+
+    tracing::subscriber::with_default(subscriber, || {
+        assert_eq!(
+            block_on(key_failure.oneshot(Request::new(())))
+                .expect("infallible service")
+                .status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+        assert_eq!(
+            block_on(quota_failure.oneshot(Request::new(())))
+                .expect("infallible service")
+                .status(),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    });
+
+    assert!(events.lock().expect("event lock").is_empty());
 }
