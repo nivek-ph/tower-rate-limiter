@@ -40,13 +40,15 @@ Enable Redis when multiple processes need to share usage:
 
 ```toml
 [dependencies]
-tower-rate-limiter = { version = "0.1", features = ["redis"] }
+tower-rate-limiter = { version = "0.1", default-features = false, features = ["redis", "runtime-tokio"] }
 ```
 
 `RedisStore` accepts an already established `redis::aio::MultiplexedConnection`. The application
 continues to own URL parsing, connection setup, reconnection strategy, and shutdown.
 
-One Lua operation increments usage and starts the TTL only on the first increment. A missing or
+The `redis` feature uses one `MULTI`/`EXEC` transaction to initialize the counter, increment it, and
+read its TTL. Use `redis-lua` in place of `redis` to perform the same fixed-window operation with
+Lua. Either implementation must be combined with `runtime-tokio` or `runtime-smol`. A missing or
 non-positive TTL is surfaced as a Store error rather than repaired implicitly.
 
 Redis adds an `rl:` transport marker and the optional namespace after it receives the scoped key.
@@ -64,7 +66,7 @@ Store, and custom error responses.
 | Counters shared across replicas | no | yes |
 | External service required | no | yes |
 | Survives process restart | no | usually, subject to Redis persistence |
-| Runtime dependency in the adapter | none | Tokio-compatible Redis connection |
+| Runtime dependency in the adapter | none | Tokio- or Smol-compatible Redis connection |
 
 Cloning `MemoryStore` shares its in-process state. Creating separate `MemoryStore::new()` values
 creates separate counter sets. With multiple application replicas, each in-memory Store enforces

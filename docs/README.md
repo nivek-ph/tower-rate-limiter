@@ -47,9 +47,15 @@ layer construction instead of hiding process-local state behind a default single
 | `memory` | yes | Runtime-independent, process-local `MemoryStore` |
 | `axum` | no | Axum `ConnectInfo<SocketAddr>` support in `IpKeyExtractor` |
 | `redis` | no | `RedisStore` backed by an existing multiplexed connection |
+| `redis-lua` | no | Redis increment through Lua instead of `MULTI`/`EXEC` |
+| `runtime-tokio` | no | Tokio-compatible Redis async runtime |
+| `runtime-smol` | no | Smol-compatible Redis async runtime |
+
+The Redis Store needs an increment implementation (`redis` or `redis-lua`) together with one async
+runtime (`runtime-tokio` or `runtime-smol`).
 
 With `default-features = false`, the core remains usable with application-provided implementations
-and does not pull in Axum, Redis, or Tokio.
+and does not pull in Axum, Redis, or an async runtime.
 
 ## Start here
 
