@@ -73,12 +73,16 @@ jobs:
         include:
           - name: Tokio / transaction
             features: redis,runtime-tokio
+            targets: --test redis_store
           - name: Tokio / Lua
             features: redis-lua,runtime-tokio
+            targets: --test redis_store
           - name: Smol / transaction
             features: redis,runtime-smol
+            targets: --test redis_store --test redis_store_smol
           - name: Smol / Lua
             features: redis-lua,runtime-smol
+            targets: --test redis_store --test redis_store_smol
     services:
       redis:
         image: redis:7-alpine
@@ -100,7 +104,7 @@ jobs:
         with:
           cache-on-failure: true
       - name: Run Redis integration test
-        run: cargo test --no-default-features --features "${{ matrix.features }}" --test redis_store
+        run: cargo test --no-default-features --features "${{ matrix.features }}" ${{ matrix.targets }}
 
   msrv:
     name: MSRV Check
