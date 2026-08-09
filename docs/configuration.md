@@ -15,6 +15,7 @@ cheap and produces services with the same policy.
 | `window(duration)` | 60 seconds | Set the fixed-window duration |
 | `response_factory(factory)` | empty default responses | Customize middleware-produced responses |
 | `store_failure_mode(mode)` | `Reject` | Reject or fail open after Store failure |
+| `store_failure_tracing_level(level)` | `WARN` | Select the Store failure event level with `tracing` enabled |
 | `rate_limit_fields(fields)` | `Draft11` | Select or disable response fields |
 | `with_key_encoder(fn)` | raw scoped key | Transform the complete key before storage |
 | `skip(predicate)` | never bypass | Exempt trusted requests before charging |
@@ -59,6 +60,13 @@ without calling the inner service.
 `StoreFailureMode::Allow` favors availability. On a Store error—or invalid Store usage—the inner
 service is called without `RateLimitContext` or rate-limit fields because no trustworthy quota
 state exists. Key and quota failures never fail open.
+
+Enable the `tracing` Cargo feature to emit an event for every Store failure, including invalid Store
+usage. Events default to `WARN`; configure a policy with
+`.store_failure_tracing_level(tracing::Level::ERROR)` when another level is appropriate. The stable
+target is `tower_rate_limiter::store`; fields contain `policy_name`, `event=store_failure`,
+`failure_mode`, and `error_code`. Events deliberately omit the Client Key, Store Key, and diagnostic
+error message. The library emits events through the application's subscriber and never installs one.
 
 ```mermaid
 %%{init: {"themeVariables": {"fontSize": "10px"}, "flowchart": {"curve": "basis", "useMaxWidth": false, "padding": 5, "nodeSpacing": 16, "rankSpacing": 20}}}%%

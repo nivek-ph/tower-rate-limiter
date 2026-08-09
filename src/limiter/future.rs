@@ -174,15 +174,24 @@ where
                     let outcome = result.and_then(|usage| ChargeOutcome::evaluate(usage, limit, this.config));
 
                     match outcome {
-                        Err(_) if this.config.store_failure_mode == StoreFailureMode::Allow => {
-                            let future = this.inner.call(request);
-                            this.state
-                                .as_mut()
-                                .project_replace(FutureState::Inner { future, metadata: None });
-                        },
                         Err(error) => {
-                            let response = MiddlewareResponse::Error(request, error);
-                            this.state.as_mut().project_replace(FutureState::Ready { response });
+                            #[cfg(feature = "tracing")]
+                            trace_store_failure(
+                                &error,
+                                this.config.store_failure_mode,
+                                &this.config.policy_name,
+                                this.config.store_failure_tracing_level,
+                            );
+
+                            if this.config.store_failure_mode == StoreFailureMode::Allow {
+                                let future = this.inner.call(request);
+                                this.state
+                                    .as_mut()
+                                    .project_replace(FutureState::Inner { future, metadata: None });
+                            } else {
+                                let response = MiddlewareResponse::Error(request, error);
+                                this.state.as_mut().project_replace(FutureState::Ready { response });
+                            }
                         },
                         Ok(ChargeOutcome::Allowed(metadata)) => {
                             let mut request = request;
@@ -220,5 +229,43 @@ where
                 },
             }
         }
+    }
+}
+
+#[cfg(feature = "tracing")]
+fn trace_store_failure(
+    error: &RateLimitError,
+    failure_mode: StoreFailureMode,
+    policy_name: &str,
+    level: tracing::Level,
+) {
+    let error_code = match error {
+        RateLimitError::Key(code, _) | RateLimitError::Quota(code, _) | RateLimitError::Store(code, _) => code,
+    };
+    let failure_mode = match failure_mode {
+        StoreFailureMode::Reject => "reject",
+        StoreFailureMode::Allow => "allow",
+    };
+
+    macro_rules! emit {
+        ($level:expr) => {
+            tracing::event!(
+                target: "tower_rate_limiter::store",
+                $level,
+                event = "store_failure",
+                policy_name,
+                failure_mode,
+                error_code,
+                "rate-limit Store failed"
+            )
+        };
+    }
+
+    match level {
+        tracing::Level::ERROR => emit!(tracing::Level::ERROR),
+        tracing::Level::WARN => emit!(tracing::Level::WARN),
+        tracing::Level::INFO => emit!(tracing::Level::INFO),
+        tracing::Level::DEBUG => emit!(tracing::Level::DEBUG),
+        tracing::Level::TRACE => emit!(tracing::Level::TRACE),
     }
 }

@@ -11,6 +11,7 @@ identity.
 - Fixed or request-derived quotas
 - Process-local memory and shared Redis Stores
 - Custom keys, responses, bypass rules, and Store failure behavior
+- Optional structured tracing for Store failures
 - IETF `RateLimit` and `RateLimit-Policy` response fields
 
 [Guide](https://nivek-ph.github.io/tower-rate-limiter/) ·
