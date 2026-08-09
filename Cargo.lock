@@ -1158,6 +1158,7 @@ dependencies = [
  "moka",
  "pin-project-lite",
  "redis",
+ "smol",
  "thiserror",
  "tokio",
  "tower",

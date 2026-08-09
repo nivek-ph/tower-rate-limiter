@@ -170,8 +170,6 @@ impl RedisStoreFuture {
     }
 }
 
-impl Unpin for RedisStoreFuture {}
-
 impl Future for RedisStoreFuture {
     type Output = Result<Usage, RateLimitError>;
 
