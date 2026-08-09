@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.1...v0.1.2) - 2026-08-09
+
+### Added
+
+- *(redis)* update dependencies and enhance Redis integration ([#11](https://github.com/nivek-ph/tower-rate-limiter/pull/11))
+- integrate moka for memory store caching in rate limiter ([#10](https://github.com/nivek-ph/tower-rate-limiter/pull/10))
+
+### Other
+
+- simplify rate limiter internals and tests ([#9](https://github.com/nivek-ph/tower-rate-limiter/pull/9))
+- expand mdBook guides and examples ([#6](https://github.com/nivek-ph/tower-rate-limiter/pull/6))
+- add mdBook website with GitHub Pages deployment ([#4](https://github.com/nivek-ph/tower-rate-limiter/pull/4))
+
 ## [0.1.1](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.0...v0.1.1) - 2026-08-07
 
 ### Added
