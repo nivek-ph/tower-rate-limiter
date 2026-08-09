@@ -27,7 +27,7 @@ pub struct RateLimitPolicy {
     pub reset_after: Duration,
 }
 
-/// Typed rate-limit state carried in request extensions for allowed requests.
+/// Read-only rate-limit state carried in request extensions for allowed requests.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct RateLimitContext {
     /// The policies in the context.
@@ -43,11 +43,6 @@ impl RateLimitContext {
     /// Borrow all policy entries in composition order.
     pub fn policies(&self) -> &[RateLimitPolicy] {
         &self.policies
-    }
-
-    /// Append one policy entry.
-    pub fn push(&mut self, entry: RateLimitPolicy) {
-        self.policies.push(entry);
     }
 }
 
@@ -129,5 +124,6 @@ pub(super) fn append_context<B>(request: &mut Request<B>, metadata: &ChargeMetad
     request
         .extensions_mut()
         .get_or_insert_default::<RateLimitContext>()
+        .policies
         .push(metadata.to_policy());
 }

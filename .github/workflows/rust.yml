@@ -73,10 +73,10 @@ jobs:
         include:
           - name: Tokio / transaction
             features: redis,runtime-tokio
-            targets: --test redis_store
+            targets: --test redis_store_tokio
           - name: Tokio / Lua
             features: redis-lua,runtime-tokio
-            targets: --test redis_store
+            targets: --test redis_store_tokio
           - name: Smol / transaction
             features: redis,runtime-smol
             targets: --test redis_store_smol
