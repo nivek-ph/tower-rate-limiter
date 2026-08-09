@@ -75,5 +75,9 @@ name = "axum"
 required-features = ["axum"]
 
 [[test]]
+name = "redis_store"
+required-features = ["redis", "runtime-tokio"]
+
+[[test]]
 name = "redis_store_smol"
 required-features = ["redis", "runtime-smol"]
