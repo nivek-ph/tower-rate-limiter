@@ -79,10 +79,10 @@ jobs:
             targets: --test redis_store
           - name: Smol / transaction
             features: redis,runtime-smol
-            targets: --test redis_store --test redis_store_smol
+            targets: --test redis_store_smol
           - name: Smol / Lua
             features: redis-lua,runtime-smol
-            targets: --test redis_store --test redis_store_smol
+            targets: --test redis_store_smol
     services:
       redis:
         image: redis:7-alpine
