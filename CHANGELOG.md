@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.4](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.3...v0.1.4) - 2026-08-10
+
+### Added
+
+- add trusted-proxy client IP extraction ([#18](https://github.com/nivek-ph/tower-rate-limiter/pull/18))
+
 ### Added
 
 - Add `ClientIpKeyExtractor` for trusted-proxy deployments, using strict client-IP Header parsing
