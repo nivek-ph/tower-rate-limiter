@@ -19,7 +19,7 @@ pub(crate) use builder::RateLimitConfig;
 pub use charge::{RateLimitContext, RateLimitPolicy};
 pub use error::{ConfigError, RateLimitError};
 pub use future::RateLimitFuture;
-pub use key_extractor::{IpKeyExtractor, KeyExtractor};
+pub use key_extractor::{ClientIpKeyExtractor, IpKeyExtractor, KeyExtractor};
 pub use layer::RateLimitLayer;
 pub use limit::LimitProvider;
 pub use response::{DefaultResponseFactory, RateLimitFields, ResponseFactory, ResponseReason};

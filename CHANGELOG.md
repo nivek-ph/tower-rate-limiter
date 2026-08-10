@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Add `ClientIpKeyExtractor` for trusted-proxy deployments, using strict client-IP Header parsing
+  with socket-address fallback.
+
 ## [0.1.3](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.2...v0.1.3) - 2026-08-10
 
 ### Added

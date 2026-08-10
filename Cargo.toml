@@ -31,11 +31,14 @@ redis = ["dep:redis"]
 redis-lua = ["redis", "redis/script"]
 runtime-tokio = ["redis?/tokio-comp"]
 runtime-smol = ["redis?/smol-comp"]
-axum = ["dep:axum"]
+axum = ["dep:axum", "http-extract/axum"]
 tracing = ["dep:tracing"]
 
 [dependencies]
 http = "1"
+http-extract = { version = "0.1.2", default-features = false, features = [
+	"client-ip",
+] }
 pin-project-lite = "0.2"
 thiserror = "2"
 tower = { version = "0.5", features = ["util"] }
@@ -67,7 +70,7 @@ name = "axum_memory"
 required-features = ["axum", "memory"]
 
 [[example]]
-name = "axum_x_forwarded_for"
+name = "trusted_proxy_client_ip"
 required-features = ["axum", "memory"]
 
 [[example]]

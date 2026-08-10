@@ -12,8 +12,9 @@ Enable Axum integration together with the default in-memory Store:
 tower-rate-limiter = { version = "0.1", features = ["axum", "memory"] }
 ```
 
-`IpKeyExtractor` can then read Axum's `ConnectInfo<SocketAddr>`. The server must supply connection
-information when serving the router:
+`IpKeyExtractor` reads Axum's `ConnectInfo<SocketAddr>` as the peer address.
+`ClientIpKeyExtractor` uses the same value as its fallback when no supported client-IP header is
+present. The server must supply connection information when serving the router:
 
 ```rust,ignore
 {{#include ../examples/axum_memory.rs:serve}}
@@ -21,18 +22,20 @@ information when serving the router:
 
 See [Axum with nested policies](examples/axum-memory.md) for the complete source.
 
-If `ConnectInfo` is missing, `IpKeyExtractor` returns a key error with code
-`peer_ip_unavailable`. Enabling the feature alone is not enough; the server construction shown
-above is what inserts the peer address.
+If `ConnectInfo` is missing, `IpKeyExtractor` returns `socket_ip_unavailable`. When both a client-IP
+header and `ConnectInfo` are missing, `ClientIpKeyExtractor` returns `client_ip_unavailable`.
+Enabling the feature alone is not enough; the server construction shown above inserts the peer
+address.
 
-Forwarding headers are untrusted input. If the application sits behind a proxy, establish and test
-its proxy trust policy before producing a forwarded client address; the crate does not do this
-implicitly.
+`ClientIpKeyExtractor` checks `Forwarded`, `X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` in
+that order. These are untrusted inputs: parsing does not authenticate their sender. Only select
+this adapter when a trusted proxy removes or overwrites every accepted header. A malformed
+first-present source returns `invalid_client_ip` instead of falling back to another header or the
+peer address. Use `IpKeyExtractor` when only the socket peer should be trusted.
 
-The [trusted forwarded addresses example](examples/axum-forwarded.md) shows application-owned
-parsing for a deployment where Nginx strips client-provided forwarding headers and writes a trusted
-value. Copying the parser without the matching proxy configuration would allow clients to choose
-their own rate-limit identity.
+The [trusted proxy client IP example](examples/trusted-proxy-client-ip.md) shows the built-in
+extractor in an Axum application. Copying it without a proxy that sanitizes every supported header
+would allow clients to choose their own rate-limit identity.
 
 ## Redis
 

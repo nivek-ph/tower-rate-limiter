@@ -130,8 +130,8 @@ mod tests {
         let response = AuthResponseFactory.build(
             Request::new(()),
             ResponseReason::Error(RateLimitError::Key(
-                String::from("peer_ip_unavailable"),
-                String::from("missing peer"),
+                String::from("socket_ip_unavailable"),
+                String::from("missing socket address"),
             )),
         );
 
