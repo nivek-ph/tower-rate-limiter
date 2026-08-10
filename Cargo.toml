@@ -32,12 +32,16 @@ redis-lua = ["redis", "redis/script"]
 runtime-tokio = ["redis?/tokio-comp"]
 runtime-smol = ["redis?/smol-comp"]
 axum = ["dep:axum"]
+tracing = ["dep:tracing"]
 
 [dependencies]
 http = "1"
 pin-project-lite = "0.2"
 thiserror = "2"
 tower = { version = "0.5", features = ["util"] }
+tracing = { version = "0.1", default-features = false, features = [
+	"std",
+], optional = true }
 
 moka = { version = "0.12", features = ["sync"], optional = true }
 

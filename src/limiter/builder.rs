@@ -58,6 +58,8 @@ impl<K> RateLimitBuilder<K> {
                 key_encoder: None,
                 skip_predicate: None,
                 store_failure_mode: StoreFailureMode::default(),
+                #[cfg(feature = "tracing")]
+                store_failure_tracing_level: tracing::Level::WARN,
                 rate_limit_fields: RateLimitFields::default(),
             },
         }
@@ -183,6 +185,17 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
         self
     }
 
+    /// Select the tracing level used for Store failure events.
+    ///
+    /// This configuration is available with the `tracing` Cargo feature. The default is
+    /// [`tracing::Level::WARN`]. It affects both [`StoreFailureMode::Allow`] and
+    /// [`StoreFailureMode::Reject`] events.
+    #[cfg(feature = "tracing")]
+    pub fn store_failure_tracing_level(mut self, level: tracing::Level) -> Self {
+        self.config.store_failure_tracing_level = level;
+        self
+    }
+
     /// Select the Rate Limit Fields revision emitted in responses.
     pub fn rate_limit_fields(mut self, fields: RateLimitFields) -> Self {
         self.config.rate_limit_fields = fields;
@@ -237,19 +250,24 @@ pub(crate) struct RateLimitConfig {
     pub(crate) skip_predicate: Option<SkipPredicate>,
     /// Select the mode to use when the Store fails.
     pub(crate) store_failure_mode: StoreFailureMode,
+    /// Select the tracing level used when the Store fails.
+    #[cfg(feature = "tracing")]
+    pub(crate) store_failure_tracing_level: tracing::Level,
     /// Select the [`RateLimitFields`] revision emitted in responses.
     pub(crate) rate_limit_fields: RateLimitFields,
 }
 
 impl fmt::Debug for RateLimitConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("RateLimitConfig")
+        let mut debug = f.debug_struct("RateLimitConfig");
+        debug
             .field("policy_name", &self.policy_name)
             .field("window", &self.window)
             .field("has_key_encoder", &self.key_encoder.is_some())
             .field("has_skip_predicate", &self.skip_predicate.is_some())
-            .field("store_failure_mode", &self.store_failure_mode)
-            .field("rate_limit_fields", &self.rate_limit_fields)
-            .finish()
+            .field("store_failure_mode", &self.store_failure_mode);
+        #[cfg(feature = "tracing")]
+        debug.field("store_failure_tracing_level", &self.store_failure_tracing_level);
+        debug.field("rate_limit_fields", &self.rate_limit_fields).finish()
     }
 }

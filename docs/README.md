@@ -50,6 +50,7 @@ layer construction instead of hiding process-local state behind a default single
 | `redis-lua` | no | Redis increment through Lua instead of `MULTI`/`EXEC` |
 | `runtime-tokio` | no | Tokio-compatible Redis async runtime |
 | `runtime-smol` | no | Smol-compatible Redis async runtime |
+| `tracing` | no | Structured events for Store failures |
 
 The Redis Store needs an increment implementation (`redis` or `redis-lua`) together with one async
 runtime (`runtime-tokio` or `runtime-smol`).

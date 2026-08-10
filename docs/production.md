@@ -48,7 +48,10 @@ Monitor at least:
 - Redis connectivity and command failures.
 
 Fail-open responses intentionally contain no quota metadata. Record this path in application
-observability without exposing raw keys or credentials.
+observability without exposing raw keys or credentials. Enabling the `tracing` Cargo feature emits
+one structured event for every Store failure on both fail-open and reject paths. Events default to
+`WARN`, and each policy may configure another level through the builder. Applications can use the
+stable target and fields for filtering, counting, and alerting.
 
 ## Policy changes and rollout
 
