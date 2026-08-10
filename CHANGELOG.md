@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.3](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.2...v0.1.3) - 2026-08-10
+
+### Added
+
+- *(tracing)* add optional structured tracing for Store failures ([#16](https://github.com/nivek-ph/tower-rate-limiter/pull/16))
+
+### Other
+
+- update README for clarity and quick start guide
+- *(redis)* share RedisStore contract tests across runtimes ([#15](https://github.com/nivek-ph/tower-rate-limiter/pull/15))
+- *(redis)* verify RedisStore on the Smol runtime ([#12](https://github.com/nivek-ph/tower-rate-limiter/pull/12))
+- *(redis)* add smol support for RedisStore and implement related tests ([#13](https://github.com/nivek-ph/tower-rate-limiter/pull/13))
+
 ## [0.1.2](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.1...v0.1.2) - 2026-08-09
 
 ### Added
