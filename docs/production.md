@@ -16,13 +16,16 @@ sharing, failure behavior, and rollout compatibility explicit.
 
 ## Identity behind proxies
 
-`IpKeyExtractor` reads the socket peer supplied in request extensions. Behind a reverse proxy, that
-peer is normally the proxy, so all clients may collapse into one key.
+`IpKeyExtractor` uses only the socket peer supplied in request extensions. It is the safe default
+when no trusted-proxy contract exists. `ClientIpKeyExtractor` checks `Forwarded`,
+`X-Forwarded-For`, `X-Real-IP`, and `CF-Connecting-IP` before falling back to that socket peer. This
+mirrors common reverse-proxy deployments, but the parsed Header value remains an unauthenticated
+assertion.
 
-Do not fix this by trusting `X-Forwarded-For` from every request. The deployment must define which
-proxies are trusted and ensure they replace or sanitize client-supplied forwarding values. Then an
-application-owned extractor can derive a forwarded client address. If that guarantee cannot be
-made, use an authenticated identity or the direct peer address.
+Do not expose `ClientIpKeyExtractor` directly to requests that may supply those headers. The deployment
+must define which proxies are trusted and ensure they remove or overwrite every accepted
+client-supplied field. If that guarantee cannot be made, use an authenticated identity or a custom
+extractor that reads only the direct peer address.
 
 ## Multiple replicas
 

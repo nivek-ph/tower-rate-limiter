@@ -62,8 +62,12 @@ returns an error, because the request already consumed application work.
 does not decide whether callers are identified by an account, credential owner, peer address, or
 another value.
 
-`IpKeyExtractor` reads a peer `SocketAddr` extension and returns its `IpAddr`. It deliberately does
-not interpret forwarding headers: proxy trust belongs at the application boundary.
+`IpKeyExtractor` reads only a peer `SocketAddr` extension and returns its `IpAddr`; it never trusts
+an HTTP field. `ClientIpKeyExtractor` uses `http-extract` to check `Forwarded`, `X-Forwarded-For`,
+`X-Real-IP`, and `CF-Connecting-IP`, in that order, then falls back to the peer address. These
+headers are raw assertions rather than authenticated identities. The application deployment must
+ensure a trusted proxy removes or overwrites every accepted header before selecting that adapter
+for security-sensitive rate limiting.
 
 ## Quota resolution
 

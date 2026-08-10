@@ -1,13 +1,13 @@
 use std::{
     future::{Ready, ready},
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     time::Duration,
 };
 
-use http::{Request, Response};
+use http::{Request, Response, header};
 use tower_rate_limiter::{
-    ConfigError, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitError, RateLimitFuture, RateLimitLayer,
-    ResponseFactory, ResponseReason, Store, Usage,
+    ClientIpKeyExtractor, ConfigError, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitError, RateLimitFuture,
+    RateLimitLayer, ResponseFactory, ResponseReason, Store, Usage,
 };
 
 #[derive(Clone)]
@@ -119,4 +119,71 @@ fn ip_key_extractor_reads_a_tower_socket_addr_extension() {
     request.extensions_mut().insert(address);
 
     assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), address.ip());
+}
+
+#[test]
+fn client_ip_key_extractor_prefers_a_client_ip_header_over_the_peer() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=198.51.100.8".parse().unwrap());
+
+    assert_eq!(
+        ClientIpKeyExtractor::new().extract(&request).unwrap(),
+        "198.51.100.8".parse::<IpAddr>().unwrap()
+    );
+}
+
+#[test]
+fn client_ip_key_extractor_rejects_an_invalid_client_ip_header() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=not-an-ip".parse().unwrap());
+
+    let error = ClientIpKeyExtractor::new()
+        .extract(&request)
+        .expect_err("an invalid client IP header must not fall back to the peer");
+
+    assert!(matches!(
+        error,
+        RateLimitError::Key(code, _message) if code == "invalid_client_ip"
+    ));
+}
+
+#[test]
+fn client_ip_key_extractor_falls_back_to_the_peer() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+
+    assert_eq!(ClientIpKeyExtractor::new().extract(&request).unwrap(), peer.ip());
+}
+
+#[test]
+fn client_ip_key_extractor_reports_when_no_address_is_available() {
+    let error = ClientIpKeyExtractor::new()
+        .extract(&Request::new(()))
+        .expect_err("missing client and peer IP must fail");
+
+    assert!(matches!(
+        error,
+        RateLimitError::Key(code, _message) if code == "client_ip_unavailable"
+    ));
+}
+
+#[test]
+fn ip_key_extractor_ignores_untrusted_client_ip_headers() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=198.51.100.8".parse().unwrap());
+
+    assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), peer.ip());
 }

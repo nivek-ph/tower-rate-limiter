@@ -49,6 +49,6 @@ fn missing_connect_info_is_key_unavailable() {
 
     assert!(matches!(
         error,
-        RateLimitError::Key(code, _message) if code == "peer_ip_unavailable"
+        RateLimitError::Key(code, _message) if code == "socket_ip_unavailable"
     ));
 }

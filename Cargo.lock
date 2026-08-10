@@ -453,6 +453,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "http-extract"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f74d67c9bcad3eeb80e1b8a83221096f41c4970c144386d878b99e10a63c357"
+dependencies = [
+ "axum",
+ "http",
+ "thiserror",
+]
+
+[[package]]
 name = "httparse"
 version = "1.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1155,6 +1166,7 @@ dependencies = [
  "axum",
  "dotenvy",
  "http",
+ "http-extract",
  "moka",
  "pin-project-lite",
  "redis",

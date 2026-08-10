@@ -32,7 +32,7 @@ application-defined client key and evaluates them against a fixed-window quota.
 
 | Concern | Application-facing seam | Included option |
 | --- | --- | --- |
-| Caller identity | `KeyExtractor` | `IpKeyExtractor` |
+| Caller identity | `KeyExtractor` | `IpKeyExtractor`, `ClientIpKeyExtractor` |
 | Quota selection | `LimitProvider` | fixed `u64` via `.limit(...)` |
 | Atomic usage | `Store` | `MemoryStore`, optional `RedisStore` |
 | Error and rejection responses | `ResponseFactory` | `DefaultResponseFactory` |
@@ -45,7 +45,7 @@ layer construction instead of hiding process-local state behind a default single
 | Feature | Default | Adds |
 | --- | --- | --- |
 | `memory` | yes | Runtime-independent, process-local `MemoryStore` |
-| `axum` | no | Axum `ConnectInfo<SocketAddr>` support in `IpKeyExtractor` |
+| `axum` | no | Axum `ConnectInfo<SocketAddr>` support in the built-in IP extractors |
 | `redis` | no | `RedisStore` backed by an existing multiplexed connection |
 | `redis-lua` | no | Redis increment through Lua instead of `MULTI`/`EXEC` |
 | `runtime-tokio` | no | Tokio-compatible Redis async runtime |

@@ -3,7 +3,7 @@
 use std::{
     fmt::{Debug, Display},
     hash::Hash,
-    net::{IpAddr, SocketAddr},
+    net::IpAddr,
 };
 
 use http::Request;
@@ -19,27 +19,7 @@ pub trait KeyExtractor: Clone + Send + Sync {
     fn extract<T>(&self, request: &Request<T>) -> Result<Self::Key, RateLimitError>;
 }
 
-#[cfg(feature = "axum")]
-use ::axum::extract::ConnectInfo;
-
-#[cfg(feature = "axum")]
-fn maybe_connect_info<T>(request: &Request<T>) -> Option<IpAddr> {
-    request
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|address| address.0.ip())
-}
-
-#[cfg(not(feature = "axum"))]
-fn maybe_connect_info<T>(_request: &Request<T>) -> Option<IpAddr> {
-    None
-}
-
-fn maybe_socket_addr<T>(request: &Request<T>) -> Option<IpAddr> {
-    request.extensions().get::<SocketAddr>().map(SocketAddr::ip)
-}
-
-/// Extract a client key from a peer `SocketAddr` request extension.
+/// Extract a client key from a socket-address request extension.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct IpKeyExtractor;
 
@@ -54,12 +34,42 @@ impl KeyExtractor for IpKeyExtractor {
     type Key = IpAddr;
 
     fn extract<T>(&self, request: &Request<T>) -> Result<Self::Key, RateLimitError> {
-        maybe_connect_info(request)
-            .or_else(|| maybe_socket_addr(request))
+        http_extract::extract_socket_ip(request).ok_or_else(|| {
+            RateLimitError::Key(
+                String::from("socket_ip_unavailable"),
+                String::from("request extensions do not contain a socket ip address"),
+            )
+        })
+    }
+}
+
+/// Extract a client IP key from supported client-IP headers, falling back to the socket IP.
+///
+/// Header-derived addresses are not authenticated. Only use this extractor when every accepted
+/// client-IP header is removed or overwritten by a trusted proxy. If no client-IP header is
+/// present, the extractor falls back to an Axum `ConnectInfo<SocketAddr>` or a generic
+/// `SocketAddr` request extension.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ClientIpKeyExtractor;
+
+impl ClientIpKeyExtractor {
+    /// Construct the header-aware client IP extractor.
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+impl KeyExtractor for ClientIpKeyExtractor {
+    type Key = IpAddr;
+
+    /// Extract the client IP from the request, falling back to the socket IP.
+    fn extract<T>(&self, request: &Request<T>) -> Result<Self::Key, RateLimitError> {
+        http_extract::extract_proxy_client_ip(request)
+            .map_err(|error| RateLimitError::Key(String::from("invalid_client_ip"), error.to_string()))?
             .ok_or_else(|| {
                 RateLimitError::Key(
-                    String::from("peer_ip_unavailable"),
-                    String::from("request extensions do not contain a peer socket address"),
+                    String::from("client_ip_unavailable"),
+                    String::from("request does not contain a client or socket IP address"),
                 )
             })
     }

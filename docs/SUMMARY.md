@@ -7,7 +7,7 @@
   - [Tower with MemoryStore](examples/tower-memory.md)
   - [Request-derived quotas](examples/tower-dynamic.md)
   - [Axum with nested policies](examples/axum-memory.md)
-  - [Trusted forwarded addresses](examples/axum-forwarded.md)
+  - [Trusted proxy client IP](examples/trusted-proxy-client-ip.md)
   - [Axum with Redis](examples/axum-redis.md)
 - [Configuration](configuration.md)
 - [How it works](concepts.md)
