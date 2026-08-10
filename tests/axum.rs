@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 
 use axum::extract::ConnectInfo;
 use http::Request;
-use tower_rate_limiter::{IpKeyExtractor, KeyExtractor, RateLimitError};
+use tower_rate_limiter::{ClientIpKeyExtractor, IpKeyExtractor, KeyExtractor, RateLimitError};
 
 fn request_with_connect_info(address: Option<SocketAddr>) -> Request<()> {
     let mut request = Request::new(());
@@ -38,6 +38,14 @@ fn native_ipv6_uses_the_standard_ip_representation() {
     let request = request_with_connect_info(Some(address));
 
     assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), address.ip());
+}
+
+#[test]
+fn client_ip_key_extractor_falls_back_to_connect_info() {
+    let address: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let request = request_with_connect_info(Some(address));
+
+    assert_eq!(ClientIpKeyExtractor::new().extract(&request).unwrap(), address.ip());
 }
 
 #[test]
