@@ -5,9 +5,10 @@ use std::{
 };
 
 use http::{Request, Response, header};
+use tower_rate_limiter::limiter::future::ResponseFuture;
 use tower_rate_limiter::{
-    ClientIpKeyExtractor, ConfigError, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitError, RateLimitFuture,
-    RateLimitLayer, ResponseFactory, ResponseReason, Store, TrustedProxyClientIpKeyExtractor, Usage,
+    ClientIpKeyExtractor, ConfigError, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitError, RateLimitLayer,
+    ResponseFactory, ResponseReason, Store, TrustedProxyClientIpKeyExtractor, Usage,
 };
 
 #[derive(Clone)]
@@ -47,8 +48,16 @@ impl LimitProvider for TestLimit {
 }
 
 #[test]
-fn rate_limit_future_is_publicly_nameable() {
-    let _: Option<RateLimitFuture<(), (), (), (), (), (), ()>> = None;
+fn response_future_is_publicly_nameable() {
+    #[allow(dead_code)]
+    fn assert_public<B, Inner, S, P, F>()
+    where
+        Inner: tower::Service<Request<B>>,
+        S: Store,
+        P: LimitProvider,
+    {
+        let _: Option<ResponseFuture<B, Inner, S, P, F>> = None;
+    }
 }
 
 #[test]

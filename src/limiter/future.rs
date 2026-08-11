@@ -11,32 +11,32 @@ use http::{Request, Response};
 use pin_project_lite::pin_project;
 
 use super::{
-    RateLimitConfig, RateLimitError,
-    charge::{ChargeMetadata, ChargeOutcome, append_context, make_key},
+    LimitProvider, RateLimitConfig, RateLimitError,
+    charge::{ChargeOutcome, Policy, ResponseMetadata, append_context, make_key},
     response::{MiddlewareResponse, ResponseFactory, append_inner_response_headers},
-    store::{Store, StoreFailureMode, Usage},
+    store::{Store, StoreFailureMode},
 };
 
 pin_project! {
-    #[project = StateProjection]
-    #[project_replace = StateProjectionReplace]
-    enum FutureState<B, LimitFuture, StoreFuture, InnerFuture> {
+    #[project = StateProj]
+    #[project_replace = StateProjReplace]
+    enum State<B, LimitFut, StoreFut, InnerFut> {
         Limit {
+            #[pin]
+            future: LimitFut,
             request: Request<B>,
             key: String,
-            #[pin]
-            future: LimitFuture,
         },
         Store {
-            request: Request<B>,
             #[pin]
-            future: StoreFuture,
+            future: StoreFut,
+            request: Request<B>,
             limit: u64,
         },
         Inner {
             #[pin]
-            future: InnerFuture,
-            metadata: Option<ChargeMetadata>,
+            future: InnerFut,
+            metadata: Option<ResponseMetadata>,
         },
         Ready {
             response: MiddlewareResponse<B>,
@@ -46,31 +46,39 @@ pin_project! {
 }
 
 pin_project! {
-    /// Response future for [`super::RateLimitService`].
-    pub struct RateLimitFuture<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory> {
+    /// Response future for [`super::RateLimit`].
+    pub struct ResponseFuture<B, Inner, S, P, F>
+        where
+        Inner: tower::Service<Request<B>>,
+        P: LimitProvider,
+        S: Store,
+    {
         #[pin]
-        state: FutureState<B, LimitFuture, StoreFuture, InnerFuture>,
+        state: State<B, P::Future, S::Future, Inner::Future>,
         inner: Inner,
         store: S,
         config: Arc<RateLimitConfig>,
-        factory: Factory,
+        factory: F,
     }
 }
 
-impl<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
-    RateLimitFuture<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
+impl<B, Inner, S, P, F> ResponseFuture<B, Inner, S, P, F>
+where
+    P: LimitProvider,
+    S: Store,
+    Inner: tower::Service<Request<B>>,
 {
     pub(crate) fn new(
         request: Request<B>,
         inner: Inner,
         store: S,
         key: String,
-        future: LimitFuture,
+        future: P::Future,
         config: Arc<RateLimitConfig>,
-        factory: Factory,
+        factory: F,
     ) -> Self {
         Self {
-            state: FutureState::Limit { request, key, future },
+            state: State::Limit { request, key, future },
             inner,
             store,
             config,
@@ -84,10 +92,10 @@ impl<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
         inner: Inner,
         store: S,
         config: Arc<RateLimitConfig>,
-        factory: Factory,
+        factory: F,
     ) -> Self {
         Self {
-            state: FutureState::Ready {
+            state: State::Ready {
                 response: MiddlewareResponse::Error(request, error),
             },
             inner,
@@ -102,14 +110,11 @@ impl<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
         mut inner: Inner,
         store: S,
         config: Arc<RateLimitConfig>,
-        factory: Factory,
-    ) -> Self
-    where
-        Inner: tower::Service<Request<B>, Future = InnerFuture>,
-    {
+        factory: F,
+    ) -> Self {
         let future = inner.call(request);
         Self {
-            state: FutureState::Inner { future, metadata: None },
+            state: State::Inner { future, metadata: None },
             inner,
             store,
             config,
@@ -118,18 +123,15 @@ impl<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
     }
 }
 
-impl<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory> Future
-    for RateLimitFuture<B, Inner, S, LimitFuture, StoreFuture, InnerFuture, Factory>
+impl<B, Inner, S, P, F> Future for ResponseFuture<B, Inner, S, P, F>
 where
     B: Send,
-    Inner: Send,
-    S: Store<Future = StoreFuture>,
-    StoreFuture: Future<Output = Result<Usage, RateLimitError>> + Send,
-    LimitFuture: Future<Output = Result<u64, RateLimitError>> + Send,
-    InnerFuture: Future<Output = Result<Response<B>, Inner::Error>> + Send,
-    Inner: tower::Service<Request<B>, Response = Response<B>, Future = InnerFuture>,
+    Inner: tower::Service<Request<B>, Response = Response<B>> + Send,
+    Inner::Future: Send,
     Inner::Error: Send,
-    Factory: ResponseFactory<B>,
+    S: Store,
+    P: LimitProvider,
+    F: ResponseFactory<B>,
 {
     type Output = Result<Response<B>, Inner::Error>;
 
@@ -138,17 +140,17 @@ where
 
         loop {
             match this.state.as_mut().project() {
-                StateProjection::Limit { future, .. } => {
+                StateProj::Limit { future, .. } => {
                     let result = ready!(future.poll(cx));
-                    let previous = this.state.as_mut().project_replace(FutureState::Done);
-                    let StateProjectionReplace::Limit { request, key, .. } = previous else {
+                    let previous = this.state.as_mut().project_replace(State::Done);
+                    let StateProjReplace::Limit { request, key, .. } = previous else {
                         unreachable!("rate-limit future state changed while polling Limit")
                     };
 
                     match result {
                         Err(error) => {
                             let response = MiddlewareResponse::Error(request, error);
-                            this.state.as_mut().project_replace(FutureState::Ready { response });
+                            this.state.as_mut().project_replace(State::Ready { response });
                         },
                         Ok(limit) => {
                             let mut key = make_key(&this.config.policy_name, &key);
@@ -156,7 +158,7 @@ where
                                 key = encoder(&key);
                             }
                             let store_future = this.store.increment(&key, this.config.window);
-                            this.state.as_mut().project_replace(FutureState::Store {
+                            this.state.as_mut().project_replace(State::Store {
                                 request,
                                 future: store_future,
                                 limit,
@@ -164,14 +166,18 @@ where
                         },
                     }
                 },
-                StateProjection::Store { future, .. } => {
+                StateProj::Store { future, .. } => {
                     let result = ready!(future.poll(cx));
-                    let previous = this.state.as_mut().project_replace(FutureState::Done);
-                    let StateProjectionReplace::Store { request, limit, .. } = previous else {
+                    let previous = this.state.as_mut().project_replace(State::Done);
+                    let StateProjReplace::Store { request, limit, .. } = previous else {
                         unreachable!("rate-limit future state changed while polling Store")
                     };
 
-                    let outcome = result.and_then(|usage| ChargeOutcome::evaluate(usage, limit, this.config));
+                    let outcome = result
+                        .and_then(|usage| {
+                            Policy::from_usage(this.config.policy_name.clone(), limit, this.config.window, usage)
+                        })
+                        .map(|policy| ChargeOutcome::evaluate(policy, this.config.rate_limit_fields));
 
                     match outcome {
                         Err(error) => {
@@ -187,44 +193,44 @@ where
                                 let future = this.inner.call(request);
                                 this.state
                                     .as_mut()
-                                    .project_replace(FutureState::Inner { future, metadata: None });
+                                    .project_replace(State::Inner { future, metadata: None });
                             } else {
                                 let response = MiddlewareResponse::Error(request, error);
-                                this.state.as_mut().project_replace(FutureState::Ready { response });
+                                this.state.as_mut().project_replace(State::Ready { response });
                             }
                         },
                         Ok(ChargeOutcome::Allowed(metadata)) => {
                             let mut request = request;
                             append_context(&mut request, &metadata);
                             let future = this.inner.call(request);
-                            this.state.as_mut().project_replace(FutureState::Inner {
+                            this.state.as_mut().project_replace(State::Inner {
                                 future,
                                 metadata: Some(metadata),
                             });
                         },
                         Ok(ChargeOutcome::RateLimited(metadata)) => {
                             let response = MiddlewareResponse::RateLimited(request, metadata);
-                            this.state.as_mut().project_replace(FutureState::Ready { response });
+                            this.state.as_mut().project_replace(State::Ready { response });
                         },
                     }
                 },
-                StateProjection::Inner { future, metadata } => {
+                StateProj::Inner { future, metadata } => {
                     let result = ready!(future.poll(cx));
                     let metadata = metadata.take();
-                    let previous = this.state.as_mut().project_replace(FutureState::Done);
-                    let StateProjectionReplace::Inner { .. } = previous else {
+                    let previous = this.state.as_mut().project_replace(State::Done);
+                    let StateProjReplace::Inner { .. } = previous else {
                         unreachable!("rate-limit future state changed while polling inner service")
                     };
                     return Poll::Ready(result.map(|response| append_inner_response_headers(response, metadata)));
                 },
-                StateProjection::Ready { .. } => {
-                    let previous = this.state.as_mut().project_replace(FutureState::Done);
-                    let StateProjectionReplace::Ready { response } = previous else {
+                StateProj::Ready { .. } => {
+                    let previous = this.state.as_mut().project_replace(State::Done);
+                    let StateProjReplace::Ready { response } = previous else {
                         unreachable!("rate-limit future state changed while returning response")
                     };
                     return Poll::Ready(Ok(response.finalize(this.factory)));
                 },
-                StateProjection::Done { .. } => {
+                StateProj::Done { .. } => {
                     panic!("rate-limit response future polled after completion")
                 },
             }
@@ -239,9 +245,6 @@ fn trace_store_failure(
     policy_name: &str,
     level: tracing::Level,
 ) {
-    let error_code = match error {
-        RateLimitError::Key(code, _) | RateLimitError::Quota(code, _) | RateLimitError::Store(code, _) => code,
-    };
     let failure_mode = match failure_mode {
         StoreFailureMode::Reject => "reject",
         StoreFailureMode::Allow => "allow",
@@ -255,7 +258,7 @@ fn trace_store_failure(
                 event = "store_failure",
                 policy_name,
                 failure_mode,
-                error_code,
+                error_code = error.code(),
                 "rate-limit Store failed"
             )
         };

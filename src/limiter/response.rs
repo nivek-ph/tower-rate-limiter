@@ -7,10 +7,16 @@ use std::time::Duration;
 
 use http::{HeaderValue, Request, Response, StatusCode, header::HeaderName};
 
-use super::{charge::ChargeMetadata, error::RateLimitError, store::Usage};
+use super::{
+    charge::{Policy, ResponseMetadata},
+    error::RateLimitError,
+};
 
+/// The `RateLimit` header name.
 const RATE_LIMIT: HeaderName = HeaderName::from_static("ratelimit");
+/// The `RateLimit-Policy` header name.
 const RATE_LIMIT_POLICY: HeaderName = HeaderName::from_static("ratelimit-policy");
+/// The `Retry-After` header name.
 const RETRY_AFTER: HeaderName = HeaderName::from_static("retry-after");
 
 /// The Rate Limit Fields revision emitted in responses.
@@ -42,8 +48,8 @@ pub enum RateLimitFields {
 /// The structured reason passed to a [`ResponseFactory`].
 #[derive(Debug)]
 pub enum ResponseReason {
-    /// The request exceeded its resolved quota.
-    RateLimited(u64, Usage),
+    /// The complete policy state after the request exceeded its resolved quota.
+    RateLimited(Policy),
     /// The middleware could not resolve or charge the request's policy.
     Error(RateLimitError),
 }
@@ -52,7 +58,7 @@ impl ResponseReason {
     /// Return the default HTTP status for this reason.
     pub const fn status_code(&self) -> StatusCode {
         match self {
-            Self::RateLimited(_, _) => StatusCode::TOO_MANY_REQUESTS,
+            Self::RateLimited(_) => StatusCode::TOO_MANY_REQUESTS,
             Self::Error(RateLimitError::Key(_, _)) | Self::Error(RateLimitError::Quota(_, _)) => {
                 StatusCode::INTERNAL_SERVER_ERROR
             },
@@ -88,7 +94,7 @@ where
 /// Response construction and rate-limit field decoration stay deferred until
 /// the future's common ready state.
 pub(super) enum MiddlewareResponse<B> {
-    RateLimited(Request<B>, ChargeMetadata),
+    RateLimited(Request<B>, ResponseMetadata),
     Error(Request<B>, RateLimitError),
 }
 
@@ -100,7 +106,7 @@ impl<B> MiddlewareResponse<B> {
     {
         match self {
             Self::RateLimited(request, metadata) => {
-                let reason = ResponseReason::RateLimited(metadata.limit, metadata.usage);
+                let reason = ResponseReason::RateLimited(metadata.policy.clone());
                 let response = factory.build(request, reason);
 
                 append_rate_limited_response_headers(response, metadata)
@@ -115,7 +121,10 @@ impl<B> MiddlewareResponse<B> {
 /// `None` means no quota metadata is available after bypass or fail-open, so no fields are
 /// written. When present, fields follow [`RateLimitFields`]; `Retry-After` is never added on this
 /// path.
-pub(super) fn append_inner_response_headers<B>(response: Response<B>, metadata: Option<ChargeMetadata>) -> Response<B> {
+pub(super) fn append_inner_response_headers<B>(
+    response: Response<B>,
+    metadata: Option<ResponseMetadata>,
+) -> Response<B> {
     match metadata {
         Some(metadata) => append_rate_limit_fields(response, &metadata),
         None => response,
@@ -125,18 +134,18 @@ pub(super) fn append_inner_response_headers<B>(response: Response<B>, metadata: 
 /// Decorate a rate-limited middleware response with Rate Limit Fields and Retry-After.
 ///
 /// Rate Limit Fields still respect [`RateLimitFields`]. `Retry-After` is always added.
-fn append_rate_limited_response_headers<B>(response: Response<B>, metadata: ChargeMetadata) -> Response<B> {
+fn append_rate_limited_response_headers<B>(response: Response<B>, metadata: ResponseMetadata) -> Response<B> {
     let mut response = append_rate_limit_fields(response, &metadata);
     append_header(
         &mut response,
         RETRY_AFTER,
-        &ceil_seconds(metadata.usage.reset_after).to_string(),
+        &ceil_seconds(metadata.policy.reset_after).to_string(),
     );
     response
 }
 
 /// Shared Rate Limit / RateLimit-Policy field writer.
-fn append_rate_limit_fields<B>(response: Response<B>, metadata: &ChargeMetadata) -> Response<B> {
+fn append_rate_limit_fields<B>(response: Response<B>, metadata: &ResponseMetadata) -> Response<B> {
     let Some((policy, rate_limit)) = format_rate_limit_fields(metadata) else {
         return response;
     };
@@ -148,15 +157,15 @@ fn append_rate_limit_fields<B>(response: Response<B>, metadata: &ChargeMetadata)
 }
 
 /// Format Rate Limit Fields for the configured revision.
-fn format_rate_limit_fields(metadata: &ChargeMetadata) -> Option<(String, String)> {
+fn format_rate_limit_fields(metadata: &ResponseMetadata) -> Option<(String, String)> {
     if metadata.rate_limit_fields == RateLimitFields::Disabled {
         return None;
     }
 
-    let limit = metadata.limit;
-    let remaining = metadata.remaining();
-    let reset_after = ceil_seconds(metadata.usage.reset_after);
-    let window = ceil_seconds(metadata.window);
+    let limit = metadata.policy.limit;
+    let remaining = metadata.policy.remaining();
+    let reset_after = ceil_seconds(metadata.policy.reset_after);
+    let window = ceil_seconds(metadata.policy.window);
 
     Some(match metadata.rate_limit_fields {
         RateLimitFields::Draft7 => (
@@ -164,7 +173,7 @@ fn format_rate_limit_fields(metadata: &ChargeMetadata) -> Option<(String, String
             format!("limit={limit}, remaining={remaining}, reset={reset_after}"),
         ),
         RateLimitFields::Draft11 => {
-            let policy_name = &metadata.policy_name;
+            let policy_name = &metadata.policy.name;
 
             (
                 format!(r#""{policy_name}";q={limit};w={window}"#),

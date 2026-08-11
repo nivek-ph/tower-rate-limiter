@@ -689,8 +689,9 @@ fn allowed_response_has_draft_eleven_fields_and_context() {
         .cloned()
         .expect("rate-limit context");
     assert_eq!(context.policies().len(), 1);
-    assert_eq!(context.policies()[0].policy_name, "default-policy");
-    assert_eq!(context.policies()[0].remaining, 1);
+    assert_eq!(context.policies()[0].name, "default-policy");
+    assert_eq!(context.policies()[0].remaining(), 1);
+    assert_eq!(context.policies()[0].window, Duration::from_secs(60));
 }
 
 #[test]
@@ -741,7 +742,7 @@ fn nested_layers_append_policy_fields_and_context_entries() {
             .expect("rate-limit context")
             .policies()
             .iter()
-            .map(|entry| entry.policy_name.as_str())
+            .map(|entry| entry.name.as_str())
             .collect::<Vec<_>>(),
         vec!["second", "first"]
     );

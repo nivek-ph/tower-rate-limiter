@@ -127,9 +127,9 @@ logging policy. The default factory returns:
 | Store failure | `503 Service Unavailable` |
 
 Allowed requests receive `RateLimitContext` in their extensions. Its policy entries contain the
-policy name, resolved limit, used and remaining quota, and reset duration. The context is absent on
-bypass and fail-open paths; downstream code should treat absence as “no trustworthy limiter
-metadata,” not as “unlimited.”
+policy name, resolved limit, configured window, used quota, and reset duration. Remaining quota is
+available through `Policy::remaining()`. The context is absent on bypass and fail-open paths;
+downstream code should treat absence as “no trustworthy limiter metadata,” not as “unlimited.”
 
 Nested Layers append policies instead of overwriting context or response fields. See
 [Rate limit fields](rate-limit-fields.md) for the wire representation.

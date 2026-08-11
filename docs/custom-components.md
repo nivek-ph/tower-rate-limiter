@@ -117,7 +117,8 @@ impl<B: Default> ResponseFactory<B> for ApiResponseFactory {
 }
 ```
 
-Match `ResponseReason::RateLimited(limit, usage)` to describe quota exhaustion, or
+Match `ResponseReason::RateLimited(policy)` to describe quota exhaustion. `policy` contains the
+resolved limit, configured window, current usage, reset duration, and `remaining()` quota. Match
 `ResponseReason::Error(...)` to map key, quota, and Store failures. The middleware adds
 `RateLimit`, `RateLimit-Policy`, and `Retry-After` after the factory returns where applicable.
 
