@@ -12,7 +12,7 @@ use pin_project_lite::pin_project;
 
 use super::{
     LimitProvider, RateLimitConfig, RateLimitError,
-    charge::{ChargeOutcome, Policy, ResponseMetadata, append_context, make_key},
+    policy::{Policy, ResponseMetadata, append_context, make_key},
     response::{MiddlewareResponse, ResponseFactory, append_inner_response_headers},
     store::{Store, StoreFailureMode},
 };
@@ -142,8 +142,8 @@ where
             match this.state.as_mut().project() {
                 StateProj::Limit { future, .. } => {
                     let result = ready!(future.poll(cx));
-                    let previous = this.state.as_mut().project_replace(State::Done);
-                    let StateProjReplace::Limit { request, key, .. } = previous else {
+                    let StateProjReplace::Limit { request, key, .. } = this.state.as_mut().project_replace(State::Done)
+                    else {
                         unreachable!("rate-limit future state changed while polling Limit")
                     };
 
@@ -168,18 +168,17 @@ where
                 },
                 StateProj::Store { future, .. } => {
                     let result = ready!(future.poll(cx));
-                    let previous = this.state.as_mut().project_replace(State::Done);
-                    let StateProjReplace::Store { request, limit, .. } = previous else {
+                    let StateProjReplace::Store { request, limit, .. } =
+                        this.state.as_mut().project_replace(State::Done)
+                    else {
                         unreachable!("rate-limit future state changed while polling Store")
                     };
 
-                    let outcome = result
-                        .and_then(|usage| {
-                            Policy::from_usage(this.config.policy_name.clone(), limit, this.config.window, usage)
-                        })
-                        .map(|policy| ChargeOutcome::evaluate(policy, this.config.rate_limit_fields));
+                    let policy = result.and_then(|usage| {
+                        Policy::from_usage(this.config.policy_name.clone(), this.config.window, limit, usage)
+                    });
 
-                    match outcome {
+                    let next_state = match policy {
                         Err(error) => {
                             #[cfg(feature = "tracing")]
                             trace_store_failure(
@@ -188,44 +187,45 @@ where
                                 &this.config.policy_name,
                                 this.config.store_failure_tracing_level,
                             );
-
                             if this.config.store_failure_mode == StoreFailureMode::Allow {
-                                let future = this.inner.call(request);
-                                this.state
-                                    .as_mut()
-                                    .project_replace(State::Inner { future, metadata: None });
+                                State::Inner {
+                                    future: this.inner.call(request),
+                                    metadata: None,
+                                }
                             } else {
-                                let response = MiddlewareResponse::Error(request, error);
-                                this.state.as_mut().project_replace(State::Ready { response });
+                                State::Ready {
+                                    response: MiddlewareResponse::Error(request, error),
+                                }
                             }
                         },
-                        Ok(ChargeOutcome::Allowed(metadata)) => {
-                            let mut request = request;
-                            append_context(&mut request, &metadata);
-                            let future = this.inner.call(request);
-                            this.state.as_mut().project_replace(State::Inner {
-                                future,
-                                metadata: Some(metadata),
-                            });
+                        Ok(policy) => {
+                            let metadata = ResponseMetadata::new(policy, this.config.rate_limit_fields);
+                            if metadata.policy.is_rate_limited() {
+                                State::Ready {
+                                    response: MiddlewareResponse::RateLimited(request, metadata),
+                                }
+                            } else {
+                                let mut request = request;
+                                append_context(&mut request, &metadata);
+                                State::Inner {
+                                    future: this.inner.call(request),
+                                    metadata: Some(metadata),
+                                }
+                            }
                         },
-                        Ok(ChargeOutcome::RateLimited(metadata)) => {
-                            let response = MiddlewareResponse::RateLimited(request, metadata);
-                            this.state.as_mut().project_replace(State::Ready { response });
-                        },
-                    }
+                    };
+                    this.state.as_mut().project_replace(next_state);
                 },
-                StateProj::Inner { future, metadata } => {
+                StateProj::Inner { future, .. } => {
                     let result = ready!(future.poll(cx));
-                    let metadata = metadata.take();
-                    let previous = this.state.as_mut().project_replace(State::Done);
-                    let StateProjReplace::Inner { .. } = previous else {
+                    let StateProjReplace::Inner { metadata, .. } = this.state.as_mut().project_replace(State::Done)
+                    else {
                         unreachable!("rate-limit future state changed while polling inner service")
                     };
                     return Poll::Ready(result.map(|response| append_inner_response_headers(response, metadata)));
                 },
                 StateProj::Ready { .. } => {
-                    let previous = this.state.as_mut().project_replace(State::Done);
-                    let StateProjReplace::Ready { response } = previous else {
+                    let StateProjReplace::Ready { response } = this.state.as_mut().project_replace(State::Done) else {
                         unreachable!("rate-limit future state changed while returning response")
                     };
                     return Poll::Ready(Ok(response.finalize(this.factory)));

@@ -78,7 +78,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
             for entry in context.policies() {
                 println!(
                     "  downstream context: policy={} limit={} remaining={}",
-                    entry.name, entry.limit, entry.remaining
+                    entry.name,
+                    entry.limit,
+                    entry.remaining()
                 );
             }
         }

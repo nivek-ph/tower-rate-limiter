@@ -1,7 +1,7 @@
-//! Charged-request implementation behind [`super::future::ResponseFuture`].
+//! Policy state and response metadata behind [`super::future::ResponseFuture`].
 //!
-//! Owns scoped Key construction, quota evaluation into metadata-bearing
-//! outcomes, and request context annotation.
+//! Owns scoped Key construction, Policy construction, response metadata, and
+//! request context annotation.
 //!
 //! [`Policy`] is the source of truth for one charged request.
 //! [`ResponseMetadata`] adds the private response-field configuration.
@@ -13,13 +13,14 @@ use http::Request;
 use super::{error::RateLimitError, response::RateLimitFields, store::Usage};
 
 /// One policy's rate-limit state exposed to a downstream handler.
+#[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Policy {
     /// The policy identifier.
     pub name: String,
     /// The resolved quota limit.
     pub limit: u64,
-    /// Charged requests in the current window.
+    /// Used requests in the current window.
     pub used: u64,
     /// The policy's window.
     pub window: Duration,
@@ -29,7 +30,7 @@ pub struct Policy {
 
 impl Policy {
     /// Build one policy state from a successful Store result.
-    pub(super) fn from_usage(name: String, limit: u64, window: Duration, usage: Usage) -> Result<Self, RateLimitError> {
+    pub(super) fn from_usage(name: String, window: Duration, limit: u64, usage: Usage) -> Result<Self, RateLimitError> {
         if usage.used == 0 {
             return Err(RateLimitError::Store(
                 String::from("invalid_usage"),
@@ -83,25 +84,11 @@ pub(super) struct ResponseMetadata {
     pub(super) rate_limit_fields: RateLimitFields,
 }
 
-/// Quota evaluation outcome for one charged request.
-pub(super) enum ChargeOutcome {
-    /// The charged request remains within its quota.
-    Allowed(ResponseMetadata),
-    /// The charged request exceeds its quota.
-    RateLimited(ResponseMetadata),
-}
-
-impl ChargeOutcome {
-    /// Evaluate one policy state against its resolved quota limit.
-    pub(super) fn evaluate(policy: Policy, rate_limit_fields: RateLimitFields) -> Self {
-        let metadata = ResponseMetadata {
+impl ResponseMetadata {
+    pub(super) fn new(policy: Policy, rate_limit_fields: RateLimitFields) -> Self {
+        Self {
             policy,
             rate_limit_fields,
-        };
-        if metadata.policy.is_rate_limited() {
-            Self::RateLimited(metadata)
-        } else {
-            Self::Allowed(metadata)
         }
     }
 }

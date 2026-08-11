@@ -8,8 +8,8 @@ use std::time::Duration;
 use http::{HeaderValue, Request, Response, StatusCode, header::HeaderName};
 
 use super::{
-    charge::{Policy, ResponseMetadata},
     error::RateLimitError,
+    policy::{Policy, ResponseMetadata},
 };
 
 /// The `RateLimit` header name.
