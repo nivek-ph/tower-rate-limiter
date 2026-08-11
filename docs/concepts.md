@@ -69,6 +69,13 @@ headers are raw assertions rather than authenticated identities. The application
 ensure a trusted proxy removes or overwrites every accepted header before selecting that adapter
 for security-sensitive rate limiting.
 
+`TrustedProxyClientIpKeyExtractor` makes the transport trust decision per request. It first requires
+the socket peer, then calls an application-supplied synchronous `Fn(IpAddr) -> bool` policy. An
+untrusted peer's forwarding Headers are ignored and the peer becomes the key. A trusted peer uses
+the same strict Header selection as `ClientIpKeyExtractor` and falls back to the peer only when all
+supported Headers are absent. A malformed first-present Header still fails closed. The crate does
+not infer trust from environment variables or Header contents.
+
 ## Quota resolution
 
 `LimitProvider` asynchronously resolves a request's quota. Calling `.limit(n)` uses a fixed `u64`,

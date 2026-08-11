@@ -24,8 +24,15 @@ assertion.
 
 Do not expose `ClientIpKeyExtractor` directly to requests that may supply those headers. The deployment
 must define which proxies are trusted and ensure they remove or overwrite every accepted
-client-supplied field. If that guarantee cannot be made, use an authenticated identity or a custom
-extractor that reads only the direct peer address.
+client-supplied field.
+
+When both trusted proxies and direct clients may reach the listener, use
+`TrustedProxyClientIpKeyExtractor` with an application-owned peer policy. It rejects requests without
+a socket peer, ignores all forwarding Headers from untrusted peers, and only parses them after the
+peer is trusted. The policy can capture application configuration such as exact proxy IPs or a CIDR
+set, but the crate never reads environment variables or supplies a network policy. Trusted proxy
+ingress must still be protected from direct-client bypass. If that guarantee cannot be made, use an
+authenticated identity or `IpKeyExtractor`.
 
 ## Multiple replicas
 
@@ -92,4 +99,4 @@ exercise the chosen Store failure mode in a controlled environment.
 
 Version 0.1 focuses on fixed-window request counting. It does not provide sliding windows, token
 buckets, weighted requests, refunds, Redis Cluster lifecycle management, or a built-in
-forwarding-header trust policy.
+proxy-address configuration source.

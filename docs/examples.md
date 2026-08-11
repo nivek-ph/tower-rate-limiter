@@ -9,7 +9,7 @@ compiled example cannot drift independently.
 | [Tower with MemoryStore](examples/tower-memory.md) | Minimal Tower Layer composition | `memory` |
 | [Request-derived quotas](examples/tower-dynamic.md) | Custom key extraction, `LimitProvider`, downstream context | `memory` |
 | [Axum with nested policies](examples/axum-memory.md) | `ConnectInfo`, global and route-scoped policies | `axum,memory` |
-| [Trusted proxy client IP](examples/trusted-proxy-client-ip.md) | Built-in client-IP extraction behind a trusted proxy | `axum,memory` |
+| [Trusted proxy client IP](examples/trusted-proxy-client-ip.md) | Peer-policy-gated client-IP extraction behind a trusted proxy | `axum,memory` |
 | [Axum with Redis](examples/axum-redis.md) | Shared Store, namespace, custom error responses | `axum,redis,runtime-tokio` |
 
 Run an example from the repository root with the command shown on its page. The Axum examples start

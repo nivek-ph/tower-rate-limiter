@@ -46,10 +46,12 @@ let service = limiter.layer(inner_service);
 
 The Store is always explicit through `.with_store(...)`. `IpKeyExtractor` reads only the peer
 `SocketAddr` from request extensions; Axum applications must provide `ConnectInfo`. Behind a trusted
-proxy, `ClientIpKeyExtractor` can check supported client-IP headers first and fall back to that peer.
-Only use its header-derived identity when the proxy removes or overwrites every accepted header. See the
-[quick-start guide](https://nivek-ph.github.io/tower-rate-limiter/getting-started.html) for a
-complete runnable example.
+proxy, `TrustedProxyClientIpKeyExtractor` accepts an application-supplied peer trust policy before
+checking supported client-IP headers. `ClientIpKeyExtractor` preserves header-first behavior for
+deployments where every request is already restricted to a trusted proxy. Header-derived identity is
+safe only when the proxy removes or overwrites every accepted header. See the [quick-start
+guide](https://nivek-ph.github.io/tower-rate-limiter/getting-started.html) for a complete runnable
+example.
 
 ## Stores
 

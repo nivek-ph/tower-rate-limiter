@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Add `TrustedProxyClientIpKeyExtractor` with an application-supplied synchronous trusted-peer
+  policy before forwarding Headers are considered.
+
 ## [0.1.5](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.4...v0.1.5) - 2026-08-11
 
 ### Fixed

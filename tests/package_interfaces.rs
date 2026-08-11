@@ -7,7 +7,7 @@ use std::{
 use http::{Request, Response, header};
 use tower_rate_limiter::{
     ClientIpKeyExtractor, ConfigError, IpKeyExtractor, KeyExtractor, LimitProvider, RateLimitError, RateLimitFuture,
-    RateLimitLayer, ResponseFactory, ResponseReason, Store, Usage,
+    RateLimitLayer, ResponseFactory, ResponseReason, Store, TrustedProxyClientIpKeyExtractor, Usage,
 };
 
 #[derive(Clone)]
@@ -186,4 +186,100 @@ fn ip_key_extractor_ignores_untrusted_client_ip_headers() {
         .insert(header::FORWARDED, "for=198.51.100.8".parse().unwrap());
 
     assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), peer.ip());
+}
+
+#[test]
+fn trusted_proxy_client_ip_key_extractor_requires_a_socket_peer() {
+    let mut request = Request::new(());
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=198.51.100.8".parse().unwrap());
+
+    let error = TrustedProxyClientIpKeyExtractor::new(|_| true)
+        .extract(&request)
+        .expect_err("a Header alone must not establish the client identity");
+
+    assert!(matches!(
+        error,
+        RateLimitError::Key(code, _message) if code == "socket_ip_unavailable"
+    ));
+}
+
+#[test]
+fn trusted_proxy_client_ip_key_extractor_ignores_headers_from_an_untrusted_peer() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=198.51.100.8".parse().unwrap());
+
+    let extractor = TrustedProxyClientIpKeyExtractor::new(|_| false);
+
+    assert_eq!(extractor.extract(&request).unwrap(), peer.ip());
+}
+
+#[test]
+fn trusted_proxy_client_ip_key_extractor_does_not_parse_headers_from_an_untrusted_peer() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=not-an-ip".parse().unwrap());
+
+    let extractor = TrustedProxyClientIpKeyExtractor::new(|_| false);
+
+    assert_eq!(extractor.extract(&request).unwrap(), peer.ip());
+}
+
+#[test]
+fn trusted_proxy_client_ip_key_extractor_uses_headers_from_a_trusted_peer() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=198.51.100.8".parse().unwrap());
+
+    let trusted_peer = peer.ip();
+    let extractor = TrustedProxyClientIpKeyExtractor::new(move |candidate| candidate == trusted_peer);
+
+    assert_eq!(
+        extractor.extract(&request).unwrap(),
+        "198.51.100.8".parse::<IpAddr>().unwrap()
+    );
+}
+
+#[test]
+fn trusted_proxy_client_ip_key_extractor_falls_back_to_a_trusted_peer() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+
+    let extractor = TrustedProxyClientIpKeyExtractor::new(|_| true);
+
+    assert_eq!(extractor.extract(&request).unwrap(), peer.ip());
+}
+
+#[test]
+fn trusted_proxy_client_ip_key_extractor_fails_closed_on_the_first_present_header() {
+    let peer: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let mut request = Request::new(());
+    request.extensions_mut().insert(peer);
+    request
+        .headers_mut()
+        .insert(header::FORWARDED, "for=not-an-ip".parse().unwrap());
+    request
+        .headers_mut()
+        .insert("x-forwarded-for", "198.51.100.8".parse().unwrap());
+
+    let error = TrustedProxyClientIpKeyExtractor::new(|_| true)
+        .extract(&request)
+        .expect_err("an invalid first-present Header must not fall through");
+
+    assert!(matches!(
+        error,
+        RateLimitError::Key(code, _message) if code == "invalid_client_ip"
+    ));
 }
