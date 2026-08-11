@@ -158,7 +158,7 @@ fn append_rate_limit_fields<B>(response: Response<B>, metadata: &ResponseMetadat
 
 /// Format Rate Limit Fields for the configured revision.
 fn format_rate_limit_fields(metadata: &ResponseMetadata) -> Option<(String, String)> {
-    if metadata.rate_limit_fields == RateLimitFields::Disabled {
+    if metadata.fields == RateLimitFields::Disabled {
         return None;
     }
 
@@ -167,7 +167,7 @@ fn format_rate_limit_fields(metadata: &ResponseMetadata) -> Option<(String, Stri
     let reset_after = ceil_seconds(metadata.policy.reset_after);
     let window = ceil_seconds(metadata.policy.window);
 
-    Some(match metadata.rate_limit_fields {
+    Some(match metadata.fields {
         RateLimitFields::Draft7 => (
             format!("{limit};w={window}"),
             format!("limit={limit}, remaining={remaining}, reset={reset_after}"),

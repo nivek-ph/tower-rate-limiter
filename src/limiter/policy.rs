@@ -12,7 +12,7 @@ use http::Request;
 
 use super::{error::RateLimitError, response::RateLimitFields, store::Usage};
 
-/// One policy's rate-limit state exposed to a downstream handler.
+/// A policy's rate-limit state exposed to a downstream handler.
 #[non_exhaustive]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Policy {
@@ -20,10 +20,10 @@ pub struct Policy {
     pub name: String,
     /// The resolved quota limit.
     pub limit: u64,
-    /// Used requests in the current window.
-    pub used: u64,
     /// The policy's window.
     pub window: Duration,
+    /// Used requests in the current window.
+    pub used: u64,
     /// Time remaining until the window resets.
     pub reset_after: Duration,
 }
@@ -41,8 +41,8 @@ impl Policy {
         Ok(Self {
             name,
             limit,
-            used: usage.used,
             window,
+            used: usage.used,
             reset_after: usage.reset_after,
         })
     }
@@ -81,15 +81,12 @@ impl RateLimitContext {
 #[derive(Clone, Debug)]
 pub(super) struct ResponseMetadata {
     pub(super) policy: Policy,
-    pub(super) rate_limit_fields: RateLimitFields,
+    pub(super) fields: RateLimitFields,
 }
 
 impl ResponseMetadata {
-    pub(super) fn new(policy: Policy, rate_limit_fields: RateLimitFields) -> Self {
-        Self {
-            policy,
-            rate_limit_fields,
-        }
+    pub(super) fn new(policy: Policy, fields: RateLimitFields) -> Self {
+        Self { policy, fields }
     }
 }
 
