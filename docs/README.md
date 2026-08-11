@@ -32,7 +32,7 @@ application-defined client key and evaluates them against a fixed-window quota.
 
 | Concern | Application-facing seam | Included option |
 | --- | --- | --- |
-| Caller identity | `KeyExtractor` | `IpKeyExtractor`, `ClientIpKeyExtractor` |
+| Caller identity | `KeyExtractor` | `IpKeyExtractor`, `ClientIpKeyExtractor`, `TrustedProxyClientIpKeyExtractor` |
 | Quota selection | `LimitProvider` | fixed `u64` via `.limit(...)` |
 | Atomic usage | `Store` | `MemoryStore`, optional `RedisStore` |
 | Error and rejection responses | `ResponseFactory` | `DefaultResponseFactory` |

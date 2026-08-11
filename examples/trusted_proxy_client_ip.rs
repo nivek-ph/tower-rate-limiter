@@ -1,13 +1,19 @@
-use std::{error::Error, net::SocketAddr, time::Duration};
+use std::{
+    error::Error,
+    net::{IpAddr, SocketAddr},
+    time::Duration,
+};
 
 use axum::{Router, routing::get};
-use tower_rate_limiter::{ClientIpKeyExtractor, MemoryStore, RateLimitLayer};
+use tower_rate_limiter::{MemoryStore, RateLimitLayer, TrustedProxyClientIpKeyExtractor};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    // Only use this extractor when a trusted proxy removes or overwrites every supported
-    // client-IP header before forwarding the request to this application.
-    let key_extractor = ClientIpKeyExtractor::new();
+    // Replace this documentation address with application-owned proxy configuration. The proxy
+    // must remove or overwrite every supported client-IP Header, and ingress must prevent clients
+    // from bypassing it through an address accepted by this policy.
+    let trusted_proxy: IpAddr = "192.0.2.10".parse()?;
+    let key_extractor = TrustedProxyClientIpKeyExtractor::new(move |peer| peer == trusted_proxy);
     let limiter = RateLimitLayer::builder(key_extractor)
         .policy_name("client-ip-limit")
         .limit(100)

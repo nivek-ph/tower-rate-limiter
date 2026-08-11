@@ -63,6 +63,16 @@ jobs:
         run: cargo test --all-features
       - name: Run doc tests
         run: cargo test --doc --all-features
+      - name: Test core without default features
+        run: cargo test --locked --no-default-features
+      - name: Test Axum in isolation
+        run: cargo test --locked --no-default-features --features axum
+      - name: Test tracing in isolation
+        run: cargo test --locked --no-default-features --features tracing
+      - name: Check examples
+        run: cargo check --locked --examples --all-features
+      - name: Verify package
+        run: cargo package --locked
 
   redis-test:
     name: Redis (${{ matrix.name }})
