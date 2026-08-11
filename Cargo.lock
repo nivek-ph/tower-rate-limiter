@@ -454,9 +454,9 @@ dependencies = [
 
 [[package]]
 name = "http-extract"
-version = "0.1.2"
+version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6f74d67c9bcad3eeb80e1b8a83221096f41c4970c144386d878b99e10a63c357"
+checksum = "aa2a9854defd8f40765e65a4acd08074e79bf4821794d104989e8c5641a0f2d7"
 dependencies = [
  "axum",
  "http",
