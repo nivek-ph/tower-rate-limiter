@@ -13,10 +13,14 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Make the crate root the only public module facade; implementation modules are now private.
+- Rename `RateLimitService` to `RateLimit` and `RateLimitFuture` to `ResponseFuture`.
+- Replace `RateLimitPolicy` with `Policy`: rename `policy_name` to `name`, add the configured
+  `window`, and replace the stored `remaining` field with `Policy::remaining()`.
+- Change `ResponseReason::RateLimited(limit, usage)` to `ResponseReason::RateLimited(policy)`.
 - Narrow `KeyExtractor`, `LimitProvider`, `Store`, and `ResponseFactory` to their semantic bounds so
   callers can use non-`Send` local services and futures where Tower permits them.
-- Separate `ReqBody` and `ResBody` throughout the Service/Future path and in
-  `ResponseFactory<ReqBody, ResBody>`.
+- Separate `ReqBody` and `ResBody` throughout the Service/Future path, changing
+  `ResponseFactory<B>` to `ResponseFactory<ReqBody, ResBody>`.
 - Keep Axum integration focused on request extensions without adding a direct Axum dependency.
 - Depend on `tower-layer` and `tower-service` directly; keep the full `tower` utility crate for
   development targets only.

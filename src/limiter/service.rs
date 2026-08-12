@@ -48,7 +48,7 @@ impl<Inner, K, S, P, F, ReqBody, ResBody> tower_service::Service<Request<ReqBody
 where
     Inner: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     K: KeyExtractor,
-    S: Store + Clone,
+    S: Store,
     P: LimitProvider,
     F: ResponseFactory<ReqBody, ResBody>,
 {

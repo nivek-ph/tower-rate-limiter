@@ -80,7 +80,7 @@ public interface is:
 use std::{future::Future, time::Duration};
 use tower_rate_limiter::{RateLimitError, Usage};
 
-trait StoreShape {
+trait StoreShape: Clone {
     type Future: Future<Output = Result<Usage, RateLimitError>>;
     fn increment(&self, key: &str, window: Duration) -> Self::Future;
 }
@@ -93,12 +93,29 @@ The illustrative `StoreShape` mirrors `tower_rate_limiter::Store`. An implementa
 - avoid extending expiry on later or rejected requests;
 - return usage including the current increment;
 - return `used >= 1` and the remaining `reset_after` duration;
-- when used by `RateLimit`, implement `Clone` and make clones of one Store value observe the same
-  counters;
+- make clones of one Store value observe the same counters;
 - map backend failures to `RateLimitError::Store(code, message)`.
 
 The Store receives a policy-scoped key. It must treat that string as opaque and must not reconstruct
 client or policy identity from its format.
+
+`Store` requires `Clone` because `RateLimitLayer` clones it into each produced Service and
+`RateLimit::call` clones it into each request's `ResponseFuture`. It deliberately has no
+unconditional `Send + Sync + 'static` supertraits, and its Future is not universally required to be
+`Send + 'static`. This keeps the core usable by local Tower executors. Add framework-specific bounds
+where the Store enters that framework. For example, a generic helper that installs a Store with
+Axum normally needs:
+
+```rust,ignore
+where
+    S: Store + Send + Sync + 'static,
+    S::Future: Send + 'static,
+```
+
+Earlier releases also placed `Send + Sync + 'static` and `Future: Send + 'static` on `Store`, so
+`S: Store` implied them automatically. After upgrading, generic framework helpers must state their
+actual runtime requirements explicitly. Concrete `RedisStore` and `MemoryStore` call sites usually
+need no additional annotations because the compiler can verify their implementations directly.
 
 ## Custom responses
 

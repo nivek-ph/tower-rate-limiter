@@ -31,10 +31,18 @@ pub struct Usage {
 /// [`Usage`] includes the current increment, so `used` is at least one and `reset_after` is the
 /// remaining duration of the active window.
 ///
-/// A Store used by [`super::RateLimit`] must also implement [`Clone`], and clones of one Store value
-/// must observe the same counter state. Independently constructed Store values may use separate
-/// state. Backend failures are represented as [`RateLimitError::Store`].
-pub trait Store {
+/// Clones of one Store value must observe the same counter state. Independently constructed Store
+/// values may use separate state. Backend failures are represented as [`RateLimitError::Store`].
+///
+/// This trait intentionally requires [`Clone`] because [`super::RateLimitLayer`] clones its Store
+/// into each produced Service and [`super::RateLimit::call`](tower_service::Service::call) clones it
+/// into each request's [`super::ResponseFuture`]. It does not require `Send`, `Sync`, or `'static`,
+/// and its Future has no unconditional `Send + 'static` bound. Frameworks should add those
+/// concurrency bounds at the integration point. For example, a generic Store passed to Axum's
+/// `Router::layer` normally needs `S: Store + Send + Sync + 'static` and
+/// `S::Future: Send + 'static` because Axum requires the resulting Layer, Service, and response
+/// Future to satisfy those bounds.
+pub trait Store: Clone {
     /// The concrete future returned by [`Store::increment`].
     type Future: Future<Output = Result<Usage, RateLimitError>>;
 

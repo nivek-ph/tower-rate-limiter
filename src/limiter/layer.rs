@@ -6,6 +6,7 @@ use tower_layer::Layer;
 
 use super::{
     builder::RateLimitConfig, key_extractor::KeyExtractor, response::DefaultResponseFactory, service::RateLimit,
+    store::Store,
 };
 
 /// Layer that applies [`RateLimit`].
@@ -22,7 +23,7 @@ pub struct RateLimitLayer<K, S = (), P = u64, F = DefaultResponseFactory> {
 impl<K, S, P, F, Inner> Layer<Inner> for RateLimitLayer<K, S, P, F>
 where
     K: KeyExtractor,
-    S: Clone,
+    S: Store,
     P: Clone,
     F: Clone,
 {
