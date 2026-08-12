@@ -103,14 +103,42 @@ client or policy identity from its format.
 `RateLimit::call` clones it into each request's `ResponseFuture`. It deliberately has no
 unconditional `Send + Sync + 'static` supertraits, and its Future is not universally required to be
 `Send + 'static`. This keeps the core usable by local Tower executors. Add framework-specific bounds
-where the Store enters that framework. For example, a generic helper that installs a Store with
-Axum normally needs:
+where the Store enters that framework.
+
+When a concrete Store is passed directly to Axum, no extra annotations are normally needed. Rust
+derives whether the resulting `ResponseFuture` is `Send + 'static` from its concrete fields and
+futures, so built-in Stores and custom Stores whose futures already satisfy those properties compile
+directly:
 
 ```rust,ignore
+let limiter = RateLimitLayer::builder(IpKeyExtractor::new())
+    .with_store(MyStore::new())
+    .build()?;
+
+let app = Router::new().layer(limiter);
+```
+
+Explicit bounds become necessary when the integration is hidden behind a generic function. Axum
+requires the final middleware Future to be `Send + 'static`, but `S: Store` alone intentionally does
+not promise that. State the framework requirement on the generic integration point:
+
+```rust,ignore
+fn add_rate_limit<S>(router: Router, store: S) -> Result<Router, ConfigError>
 where
     S: Store + Send + Sync + 'static,
     S::Future: Send + 'static,
+{
+    let limiter = RateLimitLayer::builder(IpKeyExtractor::new())
+        .with_store(store)
+        .build()?;
+
+    Ok(router.layer(limiter))
+}
 ```
+
+The same rule applies to other generic injected components: if a custom `LimitProvider` is used in
+an Axum helper, its future normally also needs `P::Future: Send + 'static`. The compiler reports the
+specific future or captured value that prevents the composed `ResponseFuture` from being `Send`.
 
 Earlier releases also placed `Send + Sync + 'static` and `Future: Send + 'static` on `Store`, so
 `S: Store` implied them automatically. After upgrading, generic framework helpers must state their

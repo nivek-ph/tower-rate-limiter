@@ -5,6 +5,13 @@ adapters without taking ownership of application lifecycle or trust policy. The 
 only enables Axum-aware extraction in `http-extract`; this crate has no direct Axum dependency, and
 applications still depend on a compatible Axum version themselves.
 
+Axum requires every installed middleware response Future to be `Send + 'static`. Concrete limiter
+components are checked automatically when a Layer is passed directly to `Router::layer`, so the
+built-in Stores normally require no annotations. A generic helper must state its runtime bounds,
+such as `S: Store + Send + Sync + 'static` and `S::Future: Send + 'static`; the core Store interface
+does not impose them because local Tower executors may use non-`Send` futures. See
+[Custom Store](custom-components.md#custom-store) for concrete and generic examples.
+
 ## Axum
 
 Enable Axum integration together with the default in-memory Store:
@@ -80,13 +87,15 @@ Store, and custom error responses.
 
 ### Choosing a Store
 
-| Requirement | `MemoryStore` | `RedisStore` |
-| --- | --- | --- |
-| Single process | yes | yes |
-| Counters shared across replicas | no | yes |
-| External service required | no | yes |
-| Survives process restart | no | usually, subject to Redis persistence |
-| Runtime dependency in the adapter | none | Tokio- or Smol-compatible Redis connection |
+
+| Requirement                       | `MemoryStore` | `RedisStore`                               |
+| --------------------------------- | ------------- | ------------------------------------------ |
+| Single process                    | yes           | yes                                        |
+| Counters shared across replicas   | no            | yes                                        |
+| External service required         | no            | yes                                        |
+| Survives process restart          | no            | usually, subject to Redis persistence      |
+| Runtime dependency in the adapter | none          | Tokio- or Smol-compatible Redis connection |
+
 
 Cloning `MemoryStore` shares its in-process state. Creating separate `MemoryStore::new()` values
 creates separate counter sets. With multiple application replicas, each in-memory Store enforces
