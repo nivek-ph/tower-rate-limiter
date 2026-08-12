@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use tower::Layer;
+use tower_layer::Layer;
 
 use super::{
     builder::RateLimitConfig, key_extractor::KeyExtractor, response::DefaultResponseFactory, service::RateLimit,

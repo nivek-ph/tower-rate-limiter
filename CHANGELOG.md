@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - Separate `ReqBody` and `ResBody` throughout the Service/Future path and in
   `ResponseFactory<ReqBody, ResBody>`.
 - Keep Axum integration focused on request extensions without adding a direct Axum dependency.
+- Depend on `tower-layer` and `tower-service` directly; keep the full `tower` utility crate for
+  development targets only.
 - Return Redis increment futures directly instead of exposing `RedisStoreFuture`.
 
 ### Release policy

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 
 use http::{Request, Response};
-use tower::Service;
+use tower_service::Service;
 
 use super::{
     builder::{RateLimitConfig, check_skip_predicate},
@@ -44,7 +44,7 @@ impl<Inner, K, S, P, F> RateLimit<Inner, K, S, P, F> {
     }
 }
 
-impl<Inner, K, S, P, F, ReqBody, ResBody> Service<Request<ReqBody>> for RateLimit<Inner, K, S, P, F>
+impl<Inner, K, S, P, F, ReqBody, ResBody> tower_service::Service<Request<ReqBody>> for RateLimit<Inner, K, S, P, F>
 where
     Inner: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     K: KeyExtractor,

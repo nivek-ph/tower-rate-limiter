@@ -49,7 +49,7 @@ pin_project! {
     /// Response future for [`super::RateLimit`].
     pub struct ResponseFuture<ReqBody, Inner, S, P, F>
         where
-        Inner: tower::Service<Request<ReqBody>>,
+        Inner: tower_service::Service<Request<ReqBody>>,
         P: LimitProvider,
         S: Store,
     {
@@ -64,7 +64,7 @@ pin_project! {
 
 impl<ReqBody, Inner, S, P, F> ResponseFuture<ReqBody, Inner, S, P, F>
 where
-    Inner: tower::Service<Request<ReqBody>>,
+    Inner: tower_service::Service<Request<ReqBody>>,
     S: Store,
     P: LimitProvider,
 {
@@ -125,7 +125,7 @@ where
 
 impl<ReqBody, ResBody, Inner, S, P, F> Future for ResponseFuture<ReqBody, Inner, S, P, F>
 where
-    Inner: tower::Service<Request<ReqBody>, Response = Response<ResBody>>,
+    Inner: tower_service::Service<Request<ReqBody>, Response = Response<ResBody>>,
     S: Store,
     P: LimitProvider,
     F: ResponseFactory<ReqBody, ResBody>,
