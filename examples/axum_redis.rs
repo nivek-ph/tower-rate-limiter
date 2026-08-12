@@ -113,21 +113,23 @@ mod tests {
 
     #[test]
     fn missing_user_id_is_unauthorized() {
-        let response = AuthResponseFactory.build(Request::new(()), ResponseReason::Error(missing_user_id()));
+        let response: Response<()> =
+            AuthResponseFactory.build(Request::new(()), ResponseReason::Error(missing_user_id()));
 
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[test]
     fn invalid_user_id_is_bad_request() {
-        let response = AuthResponseFactory.build(Request::new(()), ResponseReason::Error(invalid_user_id()));
+        let response: Response<()> =
+            AuthResponseFactory.build(Request::new(()), ResponseReason::Error(invalid_user_id()));
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]
     fn unrelated_key_failure_keeps_default_server_error() {
-        let response = AuthResponseFactory.build(
+        let response: Response<()> = AuthResponseFactory.build(
             Request::new(()),
             ResponseReason::Error(RateLimitError::Key(
                 String::from("socket_ip_unavailable"),
