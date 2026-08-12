@@ -7,9 +7,9 @@ use http::Request;
 use super::error::RateLimitError;
 
 /// Resolve a fixed or request-derived quota limit asynchronously.
-pub trait LimitProvider: Clone + Send + Sync + 'static {
+pub trait LimitProvider {
     /// The concrete future returned by [`LimitProvider::limit`].
-    type Future: Future<Output = Result<u64, RateLimitError>> + Send + 'static;
+    type Future: Future<Output = Result<u64, RateLimitError>>;
 
     /// Resolve the quota limit for one request.
     fn limit<B>(&self, request: &Request<B>) -> Self::Future;

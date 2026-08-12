@@ -1,8 +1,7 @@
 //! Request-facing client-key extraction interfaces.
 
 use std::{
-    fmt::{Debug, Display},
-    hash::Hash,
+    fmt::{self, Display},
     net::IpAddr,
     sync::Arc,
 };
@@ -12,9 +11,12 @@ use http::Request;
 use super::error::RateLimitError;
 
 /// Extract a client key synchronously from a request.
-pub trait KeyExtractor: Clone + Send + Sync {
+///
+/// A Rate Limiter owns one extractor. Normalize client identity once at this request boundary and
+/// return the resulting displayable key; do not chain multiple extractors inside the middleware.
+pub trait KeyExtractor: Clone {
     /// The type of the key.
-    type Key: Clone + Hash + Eq + Debug + Display;
+    type Key: Display;
 
     /// Extract the key from the request.
     fn extract<T>(&self, request: &Request<T>) -> Result<Self::Key, RateLimitError>;
@@ -99,6 +101,14 @@ impl KeyExtractor for ClientIpKeyExtractor {
 #[derive(Clone)]
 pub struct TrustedProxyClientIpKeyExtractor {
     is_trusted_proxy: Arc<dyn Fn(IpAddr) -> bool + Send + Sync>,
+}
+
+impl fmt::Debug for TrustedProxyClientIpKeyExtractor {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("TrustedProxyClientIpKeyExtractor")
+            .finish_non_exhaustive()
+    }
 }
 
 impl TrustedProxyClientIpKeyExtractor {

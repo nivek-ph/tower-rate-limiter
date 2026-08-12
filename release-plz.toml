@@ -1,7 +1,11 @@
 [workspace]
 release_always = false
+semver_check = false
+features_always_increment_minor = false
 
-# Prepare a release only for features, fixes, performance work, and breaking changes.
-release_commits = '^(?:(feat|fix|perf)[(:!]|[^:]+!:)'
+# On the current 0.x line, ordinary feature, fix, and performance commits produce patch releases.
+# Minor and major version changes are prepared manually; commits intended for automation must not
+# use Conventional Commit breaking markers.
+release_commits = '^(?:feat|fix|perf)(?:\([^)]*\))?:'
 
 pr_labels = ["release"]

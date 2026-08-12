@@ -35,8 +35,9 @@ impl KeyExtractor for AccountKey {
 }
 ```
 
-The key must implement `Clone + Hash + Eq + Debug + Display`. Prefer a stable, non-secret identifier.
-Authentication and credential validation should happen in an earlier application layer.
+The key only needs to implement `Display`. Prefer a stable, non-secret identifier. Authentication
+and credential validation should happen in an earlier application layer. Normalize identity once
+at this boundary rather than composing several extractors.
 
 ## Request-derived quota
 
@@ -79,8 +80,8 @@ public interface is:
 use std::{future::Future, time::Duration};
 use tower_rate_limiter::{RateLimitError, Usage};
 
-trait StoreShape: Clone + Send + Sync + 'static {
-    type Future: Future<Output = Result<Usage, RateLimitError>> + Send + 'static;
+trait StoreShape {
+    type Future: Future<Output = Result<Usage, RateLimitError>>;
     fn increment(&self, key: &str, window: Duration) -> Self::Future;
 }
 ```
@@ -92,6 +93,8 @@ The illustrative `StoreShape` mirrors `tower_rate_limiter::Store`. An implementa
 - avoid extending expiry on later or rejected requests;
 - return usage including the current increment;
 - return `used >= 1` and the remaining `reset_after` duration;
+- when used by `RateLimit`, implement `Clone` and make clones of one Store value observe the same
+  counters;
 - map backend failures to `RateLimitError::Store(code, message)`.
 
 The Store receives a policy-scoped key. It must treat that string as opaque and must not reconstruct
@@ -99,7 +102,8 @@ client or policy identity from its format.
 
 ## Custom responses
 
-`ResponseFactory` receives the original request and a structured reason:
+`ResponseFactory` receives the original request and a structured reason. `ReqBody` and `ResBody`
+are independent, matching Tower services whose request and response body types differ:
 
 ```rust,ignore
 use http::{Request, Response};
@@ -108,9 +112,9 @@ use tower_rate_limiter::{ResponseFactory, ResponseReason};
 #[derive(Clone, Copy)]
 struct ApiResponseFactory;
 
-impl<B: Default> ResponseFactory<B> for ApiResponseFactory {
-    fn build(&self, _request: Request<B>, reason: ResponseReason) -> Response<B> {
-        let mut response = Response::new(B::default());
+impl<ReqBody, ResBody: Default> ResponseFactory<ReqBody, ResBody> for ApiResponseFactory {
+    fn build(&self, _request: Request<ReqBody>, reason: ResponseReason) -> Response<ResBody> {
+        let mut response = Response::new(ResBody::default());
         *response.status_mut() = reason.status_code();
         response
     }

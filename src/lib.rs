@@ -3,13 +3,13 @@
 //! The crate is Tower-first: the core interfaces do not require Axum, Tokio, Redis, or a
 //! particular request identity policy. Optional adapters are enabled through Cargo features.
 
-pub mod limiter;
-pub mod store;
+mod limiter;
+mod store;
 
 pub use limiter::{
     ClientIpKeyExtractor, ConfigError, DefaultResponseFactory, IpKeyExtractor, KeyExtractor, LimitProvider, Policy,
     RateLimit, RateLimitBuilder, RateLimitContext, RateLimitError, RateLimitFields, RateLimitLayer, ResponseFactory,
-    ResponseReason, Store, StoreFailureMode, TrustedProxyClientIpKeyExtractor, Usage,
+    ResponseFuture, ResponseReason, Store, StoreFailureMode, TrustedProxyClientIpKeyExtractor, Usage,
 };
 
 #[cfg(feature = "memory")]

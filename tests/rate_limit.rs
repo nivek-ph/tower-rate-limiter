@@ -2,6 +2,7 @@ use std::{
     collections::HashMap,
     convert::Infallible,
     future::{Future, Ready, ready},
+    marker::PhantomData,
     pin::pin,
     sync::{
         Arc, Mutex,
@@ -367,7 +368,7 @@ fn inner_error_type_is_preserved() {
 #[derive(Clone, Copy)]
 struct ReasonFactory;
 
-impl ResponseFactory<Vec<u8>> for ReasonFactory {
+impl ResponseFactory<Vec<u8>, Vec<u8>> for ReasonFactory {
     fn build(&self, _request: Request<Vec<u8>>, reason: ResponseReason) -> Response<Vec<u8>> {
         let status = match reason {
             ResponseReason::RateLimited(policy) => {
@@ -922,6 +923,60 @@ impl Service<Request<Vec<u8>>> for DropTrackingService {
     }
 }
 
+struct PendingDropFuture<T> {
+    drops: Arc<AtomicUsize>,
+    _output: PhantomData<fn() -> T>,
+}
+
+impl<T> PendingDropFuture<T> {
+    fn new(drops: Arc<AtomicUsize>) -> Self {
+        Self {
+            drops,
+            _output: PhantomData,
+        }
+    }
+}
+
+impl<T> Future for PendingDropFuture<T> {
+    type Output = T;
+
+    fn poll(self: std::pin::Pin<&mut Self>, _context: &mut Context<'_>) -> Poll<Self::Output> {
+        Poll::Pending
+    }
+}
+
+impl<T> Drop for PendingDropFuture<T> {
+    fn drop(&mut self) {
+        self.drops.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+#[derive(Clone)]
+struct PendingLimitProvider {
+    future_drops: Arc<AtomicUsize>,
+}
+
+impl LimitProvider for PendingLimitProvider {
+    type Future = PendingDropFuture<Result<u64, RateLimitError>>;
+
+    fn limit<B>(&self, _request: &Request<B>) -> Self::Future {
+        PendingDropFuture::new(Arc::clone(&self.future_drops))
+    }
+}
+
+#[derive(Clone)]
+struct PendingStore {
+    future_drops: Arc<AtomicUsize>,
+}
+
+impl Store for PendingStore {
+    type Future = PendingDropFuture<Result<Usage, RateLimitError>>;
+
+    fn increment(&self, _key: &str, _window: Duration) -> Self::Future {
+        PendingDropFuture::new(Arc::clone(&self.future_drops))
+    }
+}
+
 #[test]
 fn allowed_request_calls_the_exact_inner_instance_reserved_by_poll_ready() {
     let (inner, events) = ReadinessService::new();
@@ -955,4 +1010,61 @@ fn rejected_request_drops_the_reserved_inner_without_calling_it() {
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     assert_eq!(calls.load(Ordering::Relaxed), 0);
     assert_eq!(drops.load(Ordering::Relaxed), 1);
+}
+
+#[test]
+fn cancelling_a_pending_limit_releases_the_future_and_reserved_inner_once() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let inner_drops = Arc::new(AtomicUsize::new(0));
+    let limit_drops = Arc::new(AtomicUsize::new(0));
+    let inner = DropTrackingService {
+        calls: Arc::clone(&calls),
+        drops: Arc::clone(&inner_drops),
+    };
+    let mut service = RateLimitLayer::builder(StaticKey("caller"))
+        .limit_provider(PendingLimitProvider {
+            future_drops: Arc::clone(&limit_drops),
+        })
+        .with_store(FakeStore::default())
+        .build()
+        .expect("valid layer")
+        .layer(inner);
+    let mut context = Context::from_waker(Waker::noop());
+
+    assert!(matches!(service.poll_ready(&mut context), Poll::Ready(Ok(()))));
+    let mut response = Box::pin(service.call(request()));
+    assert!(matches!(response.as_mut().poll(&mut context), Poll::Pending));
+    drop(response);
+
+    assert_eq!(limit_drops.load(Ordering::Relaxed), 1);
+    assert_eq!(inner_drops.load(Ordering::Relaxed), 1);
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
+}
+
+#[test]
+fn cancelling_a_pending_store_releases_the_future_and_reserved_inner_once() {
+    let calls = Arc::new(AtomicUsize::new(0));
+    let inner_drops = Arc::new(AtomicUsize::new(0));
+    let store_drops = Arc::new(AtomicUsize::new(0));
+    let inner = DropTrackingService {
+        calls: Arc::clone(&calls),
+        drops: Arc::clone(&inner_drops),
+    };
+    let mut service = RateLimitLayer::builder(StaticKey("caller"))
+        .with_store(PendingStore {
+            future_drops: Arc::clone(&store_drops),
+        })
+        .build()
+        .expect("valid layer")
+        .layer(inner);
+    let mut context = Context::from_waker(Waker::noop());
+
+    assert!(matches!(service.poll_ready(&mut context), Poll::Ready(Ok(()))));
+    let mut response = Box::pin(service.call(request()));
+    assert!(matches!(response.as_mut().poll(&mut context), Poll::Pending));
+    drop(response);
+
+    assert_eq!(store_drops.load(Ordering::Relaxed), 1);
+    assert_eq!(inner_drops.load(Ordering::Relaxed), 1);
+    assert_eq!(calls.load(Ordering::Relaxed), 0);
 }

@@ -10,4 +10,4 @@ pub use memory::{MemoryStore, MemoryStoreError};
 mod redis;
 
 #[cfg(all(feature = "redis", any(feature = "runtime-tokio", feature = "runtime-smol")))]
-pub use redis::{RedisStore, RedisStoreError, RedisStoreFuture};
+pub use redis::{RedisStore, RedisStoreError};

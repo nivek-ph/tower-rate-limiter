@@ -48,11 +48,11 @@ fn invalid_user_id() -> RateLimitError {
 #[derive(Clone, Copy, Debug, Default)]
 struct AuthResponseFactory;
 
-impl<B> ResponseFactory<B> for AuthResponseFactory
+impl<ReqBody, ResBody> ResponseFactory<ReqBody, ResBody> for AuthResponseFactory
 where
-    B: Default,
+    ResBody: Default,
 {
-    fn build(&self, _request: Request<B>, reason: ResponseReason) -> Response<B> {
+    fn build(&self, _request: Request<ReqBody>, reason: ResponseReason) -> Response<ResBody> {
         let status = match &reason {
             ResponseReason::Error(RateLimitError::Key(code, _)) if code == "missing_user_id" => {
                 StatusCode::UNAUTHORIZED
@@ -61,7 +61,7 @@ where
             _ => reason.status_code(),
         };
 
-        let mut response = Response::new(B::default());
+        let mut response = Response::new(ResBody::default());
         *response.status_mut() = status;
         response
     }

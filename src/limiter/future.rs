@@ -20,17 +20,17 @@ use super::{
 pin_project! {
     #[project = StateProj]
     #[project_replace = StateProjReplace]
-    enum State<B, LimitFut, StoreFut, InnerFut> {
+    enum State<ReqBody, LimitFut, StoreFut, InnerFut> {
         Limit {
             #[pin]
             future: LimitFut,
-            request: Request<B>,
+            request: Request<ReqBody>,
             key: String,
         },
         Store {
             #[pin]
             future: StoreFut,
-            request: Request<B>,
+            request: Request<ReqBody>,
             limit: u64,
         },
         Inner {
@@ -39,7 +39,7 @@ pin_project! {
             metadata: Option<ResponseMetadata>,
         },
         Ready {
-            response: MiddlewareResponse<B>,
+            response: MiddlewareResponse<ReqBody>,
         },
         Done,
     }
@@ -47,14 +47,14 @@ pin_project! {
 
 pin_project! {
     /// Response future for [`super::RateLimit`].
-    pub struct ResponseFuture<B, Inner, S, P, F>
+    pub struct ResponseFuture<ReqBody, Inner, S, P, F>
         where
-        Inner: tower::Service<Request<B>>,
+        Inner: tower::Service<Request<ReqBody>>,
         P: LimitProvider,
         S: Store,
     {
         #[pin]
-        state: State<B, P::Future, S::Future, Inner::Future>,
+        state: State<ReqBody, P::Future, S::Future, Inner::Future>,
         inner: Inner,
         store: S,
         config: Arc<RateLimitConfig>,
@@ -62,14 +62,14 @@ pin_project! {
     }
 }
 
-impl<B, Inner, S, P, F> ResponseFuture<B, Inner, S, P, F>
+impl<ReqBody, Inner, S, P, F> ResponseFuture<ReqBody, Inner, S, P, F>
 where
-    P: LimitProvider,
+    Inner: tower::Service<Request<ReqBody>>,
     S: Store,
-    Inner: tower::Service<Request<B>>,
+    P: LimitProvider,
 {
     pub(crate) fn new(
-        request: Request<B>,
+        request: Request<ReqBody>,
         inner: Inner,
         store: S,
         key: String,
@@ -87,7 +87,7 @@ where
     }
 
     pub(crate) fn error(
-        request: Request<B>,
+        request: Request<ReqBody>,
         error: RateLimitError,
         inner: Inner,
         store: S,
@@ -106,7 +106,7 @@ where
     }
 
     pub(crate) fn skipped(
-        request: Request<B>,
+        request: Request<ReqBody>,
         mut inner: Inner,
         store: S,
         config: Arc<RateLimitConfig>,
@@ -123,17 +123,14 @@ where
     }
 }
 
-impl<B, Inner, S, P, F> Future for ResponseFuture<B, Inner, S, P, F>
+impl<ReqBody, ResBody, Inner, S, P, F> Future for ResponseFuture<ReqBody, Inner, S, P, F>
 where
-    B: Send,
-    Inner: tower::Service<Request<B>, Response = Response<B>> + Send,
-    Inner::Future: Send,
-    Inner::Error: Send,
+    Inner: tower::Service<Request<ReqBody>, Response = Response<ResBody>>,
     S: Store,
     P: LimitProvider,
-    F: ResponseFactory<B>,
+    F: ResponseFactory<ReqBody, ResBody>,
 {
-    type Output = Result<Response<B>, Inner::Error>;
+    type Output = Result<Response<ResBody>, Inner::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();

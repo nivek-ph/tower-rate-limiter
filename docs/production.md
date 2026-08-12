@@ -34,6 +34,10 @@ set, but the crate never reads environment variables or supplies a network polic
 ingress must still be protected from direct-client bypass. If that guarantee cannot be made, use an
 authenticated identity or `IpKeyExtractor`.
 
+Choose one extractor for the listener and normalize identity once. Chaining socket and
+header-aware extractors creates multiple trust decisions for the same request and is outside the
+middleware contract.
+
 ## Multiple replicas
 
 `MemoryStore` is process-local. If three replicas each allow 100 requests, a caller routed across

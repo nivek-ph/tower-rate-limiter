@@ -24,9 +24,19 @@ pub struct Usage {
 }
 
 /// An asynchronous fixed-window rate-limit store.
-pub trait Store: Clone + Send + Sync + 'static {
+///
+/// Implementations receive a complete, policy-scoped key and must treat it as opaque. For each
+/// key, [`Store::increment`] must atomically create or increment one fixed window, start expiry on
+/// the first increment, and leave that expiry unchanged on later increments. The returned
+/// [`Usage`] includes the current increment, so `used` is at least one and `reset_after` is the
+/// remaining duration of the active window.
+///
+/// A Store used by [`super::RateLimit`] must also implement [`Clone`], and clones of one Store value
+/// must observe the same counter state. Independently constructed Store values may use separate
+/// state. Backend failures are represented as [`RateLimitError::Store`].
+pub trait Store {
     /// The concrete future returned by [`Store::increment`].
-    type Future: Future<Output = Result<Usage, RateLimitError>> + Send + 'static;
+    type Future: Future<Output = Result<Usage, RateLimitError>>;
 
     /// Atomically increment `key` for the fixed `window`.
     fn increment(&self, key: &str, window: Duration) -> Self::Future;

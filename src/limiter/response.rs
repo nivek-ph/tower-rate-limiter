@@ -68,9 +68,9 @@ impl ResponseReason {
 }
 
 /// A factory for responses to rate-limit middleware results.
-pub trait ResponseFactory<B>: Clone + Send + Sync {
+pub trait ResponseFactory<ReqBody, ResBody>: Clone {
     /// Build a response using the original request and structured reason.
-    fn build(&self, request: Request<B>, reason: ResponseReason) -> Response<B>;
+    fn build(&self, request: Request<ReqBody>, reason: ResponseReason) -> Response<ResBody>;
 }
 
 /// The default empty-body response factory.
@@ -78,12 +78,12 @@ pub trait ResponseFactory<B>: Clone + Send + Sync {
 #[non_exhaustive]
 pub struct DefaultResponseFactory;
 
-impl<B> ResponseFactory<B> for DefaultResponseFactory
+impl<ReqBody, ResBody> ResponseFactory<ReqBody, ResBody> for DefaultResponseFactory
 where
-    B: Default,
+    ResBody: Default,
 {
-    fn build(&self, _request: Request<B>, reason: ResponseReason) -> Response<B> {
-        let mut response = Response::new(B::default());
+    fn build(&self, _request: Request<ReqBody>, reason: ResponseReason) -> Response<ResBody> {
+        let mut response = Response::new(ResBody::default());
         *response.status_mut() = reason.status_code();
         response
     }
@@ -93,16 +93,16 @@ where
 ///
 /// Response construction and rate-limit field decoration stay deferred until
 /// the future's common ready state.
-pub(super) enum MiddlewareResponse<B> {
-    RateLimited(Request<B>, ResponseMetadata),
-    Error(Request<B>, RateLimitError),
+pub(super) enum MiddlewareResponse<ReqBody> {
+    RateLimited(Request<ReqBody>, ResponseMetadata),
+    Error(Request<ReqBody>, RateLimitError),
 }
 
-impl<B> MiddlewareResponse<B> {
+impl<ReqBody> MiddlewareResponse<ReqBody> {
     /// Build and decorate the final HTTP response through one middleware path.
-    pub(super) fn finalize<F>(self, factory: &F) -> Response<B>
+    pub(super) fn finalize<ResBody, Factory>(self, factory: &Factory) -> Response<ResBody>
     where
-        F: ResponseFactory<B>,
+        Factory: ResponseFactory<ReqBody, ResBody>,
     {
         match self {
             Self::RateLimited(request, metadata) => {

@@ -17,7 +17,7 @@ use super::{
 
 /// Tower service produced by [`super::RateLimitLayer`].
 #[must_use]
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct RateLimit<Inner, K, S, P, F> {
     pub(crate) inner: Inner,
     pub(crate) key_extractor: K,
@@ -27,18 +27,32 @@ pub struct RateLimit<Inner, K, S, P, F> {
     pub(crate) config: Arc<RateLimitConfig>,
 }
 
-impl<Inner, K, S, P, F, ReqBody> Service<Request<ReqBody>> for RateLimit<Inner, K, S, P, F>
+impl<Inner, K, S, P, F> RateLimit<Inner, K, S, P, F> {
+    /// Borrow the wrapped service.
+    pub const fn get_ref(&self) -> &Inner {
+        &self.inner
+    }
+
+    /// Mutably borrow the wrapped service.
+    pub fn get_mut(&mut self) -> &mut Inner {
+        &mut self.inner
+    }
+
+    /// Consume this middleware and return the wrapped service.
+    pub fn into_inner(self) -> Inner {
+        self.inner
+    }
+}
+
+impl<Inner, K, S, P, F, ReqBody, ResBody> Service<Request<ReqBody>> for RateLimit<Inner, K, S, P, F>
 where
-    Inner: Service<Request<ReqBody>, Response = Response<ReqBody>> + Clone + Send,
-    Inner::Future: Send,
-    Inner::Error: Send,
-    ReqBody: Send,
+    Inner: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     K: KeyExtractor,
-    S: Store,
+    S: Store + Clone,
     P: LimitProvider,
-    F: ResponseFactory<ReqBody>,
+    F: ResponseFactory<ReqBody, ResBody>,
 {
-    type Response = Response<ReqBody>;
+    type Response = Inner::Response;
     type Error = Inner::Error;
     type Future = ResponseFuture<ReqBody, Inner, S, P, F>;
 

@@ -51,6 +51,16 @@ fn client_ip_key_extractor_falls_back_to_connect_info() {
 }
 
 #[test]
+fn connect_info_takes_precedence_over_a_generic_socket_address_extension() {
+    let connect_info: SocketAddr = "192.0.2.7:443".parse().unwrap();
+    let generic: SocketAddr = "198.51.100.8:8443".parse().unwrap();
+    let mut request = request_with_connect_info(Some(connect_info));
+    request.extensions_mut().insert(generic);
+
+    assert_eq!(IpKeyExtractor::new().extract(&request).unwrap(), connect_info.ip());
+}
+
+#[test]
 fn missing_connect_info_is_key_unavailable() {
     let request = request_with_connect_info(None);
     let error = IpKeyExtractor::new()

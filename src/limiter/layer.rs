@@ -9,7 +9,7 @@ use super::{
 };
 
 /// Layer that applies [`RateLimit`].
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 #[must_use]
 pub struct RateLimitLayer<K, S = (), P = u64, F = DefaultResponseFactory> {
     pub(crate) key_extractor: K,

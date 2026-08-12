@@ -62,7 +62,10 @@ impl Expiry<String, Entry> for EntryExpiry {
     }
 }
 
-/// Entries expire with their fixed windows.
+/// In-process Store whose clones share one counter set.
+///
+/// Entries expire with their fixed windows. Window durations use [`Duration`] and [`Instant`]
+/// directly, without reducing their precision before storage.
 ///
 /// # Examples
 ///

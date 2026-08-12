@@ -31,7 +31,7 @@ redis = ["dep:redis"]
 redis-lua = ["redis", "redis/script"]
 runtime-tokio = ["redis?/tokio-comp"]
 runtime-smol = ["redis?/smol-comp"]
-axum = ["dep:axum", "http-extract/axum"]
+axum = ["http-extract/axum"]
 tracing = ["dep:tracing"]
 
 [dependencies]
@@ -49,10 +49,10 @@ tracing = { version = "0.1", default-features = false, features = [
 moka = { version = "0.12", features = ["sync"], optional = true }
 
 # optional dependencies
-axum = { version = "0.8", optional = true }
 redis = { version = "1", default-features = false, optional = true }
 
 [dev-dependencies]
+axum = "0.8"
 dotenvy = "0.15"
 smol = "2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }

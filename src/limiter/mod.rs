@@ -5,7 +5,7 @@
 
 mod builder;
 mod error;
-pub mod future;
+mod future;
 mod key_extractor;
 mod layer;
 mod limit;
@@ -17,6 +17,7 @@ mod store;
 pub use builder::RateLimitBuilder;
 pub(crate) use builder::RateLimitConfig;
 pub use error::{ConfigError, RateLimitError};
+pub use future::ResponseFuture;
 pub use key_extractor::{ClientIpKeyExtractor, IpKeyExtractor, KeyExtractor, TrustedProxyClientIpKeyExtractor};
 pub use layer::RateLimitLayer;
 pub use limit::LimitProvider;
