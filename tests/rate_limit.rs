@@ -370,7 +370,16 @@ struct ReasonFactory;
 impl ResponseFactory<Vec<u8>> for ReasonFactory {
     fn build(&self, _request: Request<Vec<u8>>, reason: ResponseReason) -> Response<Vec<u8>> {
         let status = match reason {
-            ResponseReason::RateLimited(..) => StatusCode::IM_A_TEAPOT,
+            ResponseReason::RateLimited(policy) => {
+                assert_eq!(policy.name, "default-policy");
+                assert_eq!(policy.limit, 0);
+                assert_eq!(policy.window, Duration::from_secs(60));
+                assert_eq!(policy.used, 1);
+                assert_eq!(policy.reset_after, Duration::from_secs(60));
+                assert_eq!(policy.remaining(), 0);
+                assert!(policy.is_rate_limited());
+                StatusCode::IM_A_TEAPOT
+            },
             ResponseReason::Error(RateLimitError::Key(_, _)) | ResponseReason::Error(RateLimitError::Quota(_, _)) => {
                 StatusCode::BAD_REQUEST
             },
