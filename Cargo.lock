@@ -1174,6 +1174,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "tower",
+ "tower-layer",
+ "tower-service",
  "tracing",
 ]
 

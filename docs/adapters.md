@@ -1,7 +1,16 @@
 # Axum and Redis
 
 The core stays independent of a web framework and async runtime. Optional features provide focused
-adapters without taking ownership of application lifecycle or trust policy.
+adapters without taking ownership of application lifecycle or trust policy. The `axum` feature
+only enables Axum-aware extraction in `http-extract`; this crate has no direct Axum dependency, and
+applications still depend on a compatible Axum version themselves.
+
+Axum requires every installed middleware response Future to be `Send + 'static`. Concrete limiter
+components are checked automatically when a Layer is passed directly to `Router::layer`, so the
+built-in Stores normally require no annotations. A generic helper must state its runtime bounds,
+such as `S: Store + Send + Sync + 'static` and `S::Future: Send + 'static`; the core Store interface
+does not impose them because local Tower executors may use non-`Send` futures. See
+[Custom Store](custom-components.md#custom-store) for concrete and generic examples.
 
 ## Axum
 
@@ -46,6 +55,8 @@ Use `IpKeyExtractor` when only the socket peer should be trusted.
 The [trusted proxy client IP example](examples/trusted-proxy-client-ip.md) shows the trust-policy
 extractor in an Axum application. A trusted peer must sanitize every supported header, and network
 policy must prevent direct clients from reaching the application through a trusted proxy address.
+Select exactly one IP extractor at the middleware boundary so every request has one normalized
+identity path.
 
 ## Redis
 
@@ -64,6 +75,9 @@ read its TTL. Use `redis-lua` in place of `redis` to perform the same fixed-wind
 Lua. Either implementation must be combined with `runtime-tokio` or `runtime-smol`. A missing or
 non-positive TTL is surfaced as a Store error rather than repaired implicitly.
 
+Redis expiry uses whole milliseconds. Sub-millisecond portions are truncated, and a window shorter
+than one millisecond is rejected. The in-memory Store retains `Duration`/`Instant` precision.
+
 Redis adds an `rl:` transport marker and the optional namespace after it receives the scoped key.
 Use a namespace to separate deployments or applications sharing one Redis database. Namespace is a
 transport concern; use distinct policy names for distinct rate-limit policies.
@@ -73,13 +87,15 @@ Store, and custom error responses.
 
 ### Choosing a Store
 
-| Requirement | `MemoryStore` | `RedisStore` |
-| --- | --- | --- |
-| Single process | yes | yes |
-| Counters shared across replicas | no | yes |
-| External service required | no | yes |
-| Survives process restart | no | usually, subject to Redis persistence |
-| Runtime dependency in the adapter | none | Tokio- or Smol-compatible Redis connection |
+
+| Requirement                       | `MemoryStore` | `RedisStore`                               |
+| --------------------------------- | ------------- | ------------------------------------------ |
+| Single process                    | yes           | yes                                        |
+| Counters shared across replicas   | no            | yes                                        |
+| External service required         | no            | yes                                        |
+| Survives process restart          | no            | usually, subject to Redis persistence      |
+| Runtime dependency in the adapter | none          | Tokio- or Smol-compatible Redis connection |
+
 
 Cloning `MemoryStore` shares its in-process state. Creating separate `MemoryStore::new()` values
 creates separate counter sets. With multiple application replicas, each in-memory Store enforces

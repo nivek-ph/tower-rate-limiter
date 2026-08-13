@@ -1,13 +1,14 @@
 //! Tower service implementation.
 
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use http::{Request, Response};
-use tower::Service;
+use tower_service::Service;
 
 use super::{
     builder::{RateLimitConfig, check_skip_predicate},
-    future::RateLimitFuture,
+    future::ResponseFuture,
     key_extractor::KeyExtractor,
     limit::LimitProvider,
     response::ResponseFactory,
@@ -16,8 +17,8 @@ use super::{
 
 /// Tower service produced by [`super::RateLimitLayer`].
 #[must_use]
-#[derive(Clone)]
-pub struct RateLimitService<Inner, K, S, P, F> {
+#[derive(Clone, Debug)]
+pub struct RateLimit<Inner, K, S, P, F> {
     pub(crate) inner: Inner,
     pub(crate) key_extractor: K,
     pub(crate) store: S,
@@ -26,22 +27,36 @@ pub struct RateLimitService<Inner, K, S, P, F> {
     pub(crate) config: Arc<RateLimitConfig>,
 }
 
-impl<Inner, K, S, P, F, ReqBody> Service<Request<ReqBody>> for RateLimitService<Inner, K, S, P, F>
+impl<Inner, K, S, P, F> RateLimit<Inner, K, S, P, F> {
+    /// Borrow the wrapped service.
+    pub const fn get_ref(&self) -> &Inner {
+        &self.inner
+    }
+
+    /// Mutably borrow the wrapped service.
+    pub fn get_mut(&mut self) -> &mut Inner {
+        &mut self.inner
+    }
+
+    /// Consume this middleware and return the wrapped service.
+    pub fn into_inner(self) -> Inner {
+        self.inner
+    }
+}
+
+impl<Inner, K, S, P, F, ReqBody, ResBody> tower_service::Service<Request<ReqBody>> for RateLimit<Inner, K, S, P, F>
 where
-    Inner: Service<Request<ReqBody>, Response = Response<ReqBody>> + Clone + Send,
-    Inner::Future: Send,
-    Inner::Error: Send,
-    ReqBody: Send,
+    Inner: Service<Request<ReqBody>, Response = Response<ResBody>> + Clone,
     K: KeyExtractor,
     S: Store,
     P: LimitProvider,
-    F: ResponseFactory<ReqBody>,
+    F: ResponseFactory<ReqBody, ResBody>,
 {
-    type Response = Response<ReqBody>;
+    type Response = Inner::Response;
     type Error = Inner::Error;
-    type Future = RateLimitFuture<ReqBody, Inner, S, P::Future, S::Future, Inner::Future, F>;
+    type Future = ResponseFuture<ReqBody, Inner, S, P, F>;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
@@ -52,7 +67,7 @@ where
         // Check if the request should be skipped.
         let request = match check_skip_predicate(self.config.skip_predicate.as_ref(), request) {
             (true, request) => {
-                return RateLimitFuture::skipped(
+                return ResponseFuture::skipped(
                     request,
                     inner,
                     self.store.clone(),
@@ -67,7 +82,7 @@ where
         let key = match self.key_extractor.extract(&request) {
             Ok(key) => key,
             Err(error) => {
-                return RateLimitFuture::error(
+                return ResponseFuture::error(
                     request,
                     error,
                     inner,
@@ -79,7 +94,7 @@ where
         };
 
         let limit_future = self.limit_provider.limit(&request);
-        RateLimitFuture::new(
+        ResponseFuture::new(
             request,
             inner,
             self.store.clone(),

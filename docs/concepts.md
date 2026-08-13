@@ -127,9 +127,9 @@ logging policy. The default factory returns:
 | Store failure | `503 Service Unavailable` |
 
 Allowed requests receive `RateLimitContext` in their extensions. Its policy entries contain the
-policy name, resolved limit, used and remaining quota, and reset duration. The context is absent on
-bypass and fail-open paths; downstream code should treat absence as “no trustworthy limiter
-metadata,” not as “unlimited.”
+policy name, resolved limit, configured window, used quota, and reset duration. Remaining quota is
+available through `Policy::remaining()`. The context is absent on bypass and fail-open paths;
+downstream code should treat absence as “no trustworthy limiter metadata,” not as “unlimited.”
 
 Nested Layers append policies instead of overwriting context or response fields. See
 [Rate limit fields](rate-limit-fields.md) for the wire representation.
@@ -154,7 +154,10 @@ fields are appended in composition order.
 
 ## Tower readiness
 
-The middleware respects Tower's readiness contract: it calls the same inner service instance that
-was observed ready. Key extraction, quota resolution, and Store access happen after the service call
-has begun, so application code should still apply timeouts and load-shedding at the appropriate
-service boundaries.
+`RateLimit` implements `Service` when its wrapped Service implements `Clone`. During
+`RateLimit::call`, the middleware replaces the wrapped Service with a clone and moves the exact
+instance observed ready into `ResponseFuture`. Key extraction begins in the outer call, quota
+resolution and Store access run while the response Future is polled, and `Inner::call` runs only
+after the request is allowed. This preserves Tower's readiness contract while leaving the middleware
+ready for a later request. Application code should still apply timeouts and load-shedding at the
+appropriate service boundaries.

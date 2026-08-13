@@ -2,14 +2,15 @@
 
 use std::sync::Arc;
 
-use tower::Layer;
+use tower_layer::Layer;
 
 use super::{
-    builder::RateLimitConfig, key_extractor::KeyExtractor, response::DefaultResponseFactory, service::RateLimitService,
+    builder::RateLimitConfig, key_extractor::KeyExtractor, response::DefaultResponseFactory, service::RateLimit,
+    store::Store,
 };
 
-/// Layer that applies the [`RateLimitService`].
-#[derive(Clone)]
+/// Layer that applies [`RateLimit`].
+#[derive(Clone, Debug)]
 #[must_use]
 pub struct RateLimitLayer<K, S = (), P = u64, F = DefaultResponseFactory> {
     pub(crate) key_extractor: K,
@@ -22,14 +23,14 @@ pub struct RateLimitLayer<K, S = (), P = u64, F = DefaultResponseFactory> {
 impl<K, S, P, F, Inner> Layer<Inner> for RateLimitLayer<K, S, P, F>
 where
     K: KeyExtractor,
-    S: Clone,
+    S: Store,
     P: Clone,
     F: Clone,
 {
-    type Service = RateLimitService<Inner, K, S, P, F>;
+    type Service = RateLimit<Inner, K, S, P, F>;
 
     fn layer(&self, inner: Inner) -> Self::Service {
-        RateLimitService {
+        RateLimit {
             inner,
             key_extractor: self.key_extractor.clone(),
             store: self.store.clone(),

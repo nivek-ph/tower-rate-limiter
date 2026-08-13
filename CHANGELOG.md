@@ -8,6 +8,28 @@ All notable changes to this project will be documented in this file.
 
 - Add `TrustedProxyClientIpKeyExtractor` with an application-supplied synchronous trusted-peer
   policy before forwarding Headers are considered.
+- Add `RateLimit::{get_ref,get_mut,into_inner}` and public `ResponseFuture` access from the crate root.
+
+### Changed
+
+- Make the crate root the only public module facade; implementation modules are now private.
+- Rename `RateLimitService` to `RateLimit` and `RateLimitFuture` to `ResponseFuture`.
+- Replace `RateLimitPolicy` with `Policy`: rename `policy_name` to `name`, add the configured
+  `window`, and replace the stored `remaining` field with `Policy::remaining()`.
+- Change `ResponseReason::RateLimited(limit, usage)` to `ResponseReason::RateLimited(policy)`.
+- Narrow `KeyExtractor`, `LimitProvider`, `Store`, and `ResponseFactory` to their semantic bounds so
+  callers can use non-`Send` local services and futures where Tower permits them.
+- Separate `ReqBody` and `ResBody` throughout the Service/Future path, changing
+  `ResponseFactory<B>` to `ResponseFactory<ReqBody, ResBody>`.
+- Keep Axum integration focused on request extensions without adding a direct Axum dependency.
+- Depend on `tower-layer` and `tower-service` directly; keep the full `tower` utility crate for
+  development targets only.
+- Return Redis increment futures directly instead of exposing `RedisStoreFuture`.
+
+### Release policy
+
+- On the current 0.x line, automatic release-plz releases remain patch releases. Minor and major
+  version changes are prepared manually by the maintainer.
 
 ## [0.1.5](https://github.com/nivek-ph/tower-rate-limiter/compare/v0.1.4...v0.1.5) - 2026-08-11
 

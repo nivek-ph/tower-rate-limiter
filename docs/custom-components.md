@@ -35,8 +35,9 @@ impl KeyExtractor for AccountKey {
 }
 ```
 
-The key must implement `Clone + Hash + Eq + Debug + Display`. Prefer a stable, non-secret identifier.
-Authentication and credential validation should happen in an earlier application layer.
+The key only needs to implement `Display`. Prefer a stable, non-secret identifier. Authentication
+and credential validation should happen in an earlier application layer. Normalize identity once
+at this boundary rather than composing several extractors.
 
 ## Request-derived quota
 
@@ -79,8 +80,8 @@ public interface is:
 use std::{future::Future, time::Duration};
 use tower_rate_limiter::{RateLimitError, Usage};
 
-trait StoreShape: Clone + Send + Sync + 'static {
-    type Future: Future<Output = Result<Usage, RateLimitError>> + Send + 'static;
+trait StoreShape: Clone {
+    type Future: Future<Output = Result<Usage, RateLimitError>>;
     fn increment(&self, key: &str, window: Duration) -> Self::Future;
 }
 ```
@@ -92,14 +93,62 @@ The illustrative `StoreShape` mirrors `tower_rate_limiter::Store`. An implementa
 - avoid extending expiry on later or rejected requests;
 - return usage including the current increment;
 - return `used >= 1` and the remaining `reset_after` duration;
+- make clones of one Store value observe the same counters;
 - map backend failures to `RateLimitError::Store(code, message)`.
 
 The Store receives a policy-scoped key. It must treat that string as opaque and must not reconstruct
 client or policy identity from its format.
 
+`Store` requires `Clone` because `RateLimitLayer` clones it into each produced Service and
+`RateLimit::call` clones it into each request's `ResponseFuture`. It deliberately has no
+unconditional `Send + Sync + 'static` supertraits, and its Future is not universally required to be
+`Send + 'static`. This keeps the core usable by local Tower executors. Add framework-specific bounds
+where the Store enters that framework.
+
+When a concrete Store is passed directly to Axum, no extra annotations are normally needed. Rust
+derives whether the resulting `ResponseFuture` is `Send + 'static` from its concrete fields and
+futures, so built-in Stores and custom Stores whose futures already satisfy those properties compile
+directly:
+
+```rust,ignore
+let limiter = RateLimitLayer::builder(IpKeyExtractor::new())
+    .with_store(MyStore::new())
+    .build()?;
+
+let app = Router::new().layer(limiter);
+```
+
+Explicit bounds become necessary when the integration is hidden behind a generic function. Axum
+requires the final middleware Future to be `Send + 'static`, but `S: Store` alone intentionally does
+not promise that. State the framework requirement on the generic integration point:
+
+```rust,ignore
+fn add_rate_limit<S>(router: Router, store: S) -> Result<Router, ConfigError>
+where
+    S: Store + Send + Sync + 'static,
+    S::Future: Send + 'static,
+{
+    let limiter = RateLimitLayer::builder(IpKeyExtractor::new())
+        .with_store(store)
+        .build()?;
+
+    Ok(router.layer(limiter))
+}
+```
+
+The same rule applies to other generic injected components: if a custom `LimitProvider` is used in
+an Axum helper, its future normally also needs `P::Future: Send + 'static`. The compiler reports the
+specific future or captured value that prevents the composed `ResponseFuture` from being `Send`.
+
+Earlier releases also placed `Send + Sync + 'static` and `Future: Send + 'static` on `Store`, so
+`S: Store` implied them automatically. After upgrading, generic framework helpers must state their
+actual runtime requirements explicitly. Concrete `RedisStore` and `MemoryStore` call sites usually
+need no additional annotations because the compiler can verify their implementations directly.
+
 ## Custom responses
 
-`ResponseFactory` receives the original request and a structured reason:
+`ResponseFactory` receives the original request and a structured reason. `ReqBody` and `ResBody`
+are independent, matching Tower services whose request and response body types differ:
 
 ```rust,ignore
 use http::{Request, Response};
@@ -108,16 +157,17 @@ use tower_rate_limiter::{ResponseFactory, ResponseReason};
 #[derive(Clone, Copy)]
 struct ApiResponseFactory;
 
-impl<B: Default> ResponseFactory<B> for ApiResponseFactory {
-    fn build(&self, _request: Request<B>, reason: ResponseReason) -> Response<B> {
-        let mut response = Response::new(B::default());
+impl<ReqBody, ResBody: Default> ResponseFactory<ReqBody, ResBody> for ApiResponseFactory {
+    fn build(&self, _request: Request<ReqBody>, reason: ResponseReason) -> Response<ResBody> {
+        let mut response = Response::new(ResBody::default());
         *response.status_mut() = reason.status_code();
         response
     }
 }
 ```
 
-Match `ResponseReason::RateLimited(limit, usage)` to describe quota exhaustion, or
+Match `ResponseReason::RateLimited(policy)` to describe quota exhaustion. `policy` contains the
+resolved limit, configured window, current usage, reset duration, and `remaining()` quota. Match
 `ResponseReason::Error(...)` to map key, quota, and Store failures. The middleware adds
 `RateLimit`, `RateLimit-Policy`, and `Retry-After` after the factory returns where applicable.
 

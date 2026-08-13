@@ -15,7 +15,7 @@ use super::{
 /// The minimum window duration allowed.
 const MINIMUM_WINDOW: Duration = Duration::from_millis(1);
 
-/// A callback to encode the scoped key before passing it to the [`Store`].
+/// A callback to encode the scoped key before passing it to the [`crate::Store`].
 pub(crate) type KeyEncoder = Box<dyn Fn(&str) -> String + Send + Sync>;
 
 /// A callback that decides whether a request bypasses rate limiting.
@@ -37,6 +37,8 @@ pub(crate) fn check_skip_predicate<B>(predicate: Option<&SkipPredicate>, request
 }
 
 /// Builder for a rate-limit layer with compile-time store/resolver/factory types.
+#[derive(Debug)]
+#[must_use]
 pub struct RateLimitBuilder<K, S = (), P = u64, F = DefaultResponseFactory> {
     key_extractor: K,
     store: S,
@@ -151,7 +153,7 @@ impl<K, S, P, F> RateLimitBuilder<K, S, P, F> {
         self
     }
 
-    /// Encode the scoped key before passing it to the [`Store`].
+    /// Encode the scoped key before passing it to the [`crate::Store`].
     ///
     /// The callback runs in the middleware future's polling path. It must be deterministic,
     /// non-blocking, free of I/O, collision-resistant for the caller's key space, and
@@ -244,7 +246,7 @@ pub(crate) struct RateLimitConfig {
     pub(crate) policy_name: String,
     /// The fixed-window duration.
     pub(crate) window: Duration,
-    /// Encode the scoped key before passing it to the [`Store`].
+    /// Encode the scoped key before passing it to the [`crate::Store`].
     pub(crate) key_encoder: Option<KeyEncoder>,
     /// Decide whether a request bypasses rate limiting.
     pub(crate) skip_predicate: Option<SkipPredicate>,

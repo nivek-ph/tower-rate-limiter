@@ -12,6 +12,8 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   MSRV: '1.96.0'
+  MDBOOK_VERSION: 0.5.4
+  MDBOOK_MERMAID_VERSION: 0.17.0
 
 jobs:
   fmt:
@@ -29,12 +31,12 @@ jobs:
       - uses: actions/checkout@v7
       - uses: mozilla-actions/sccache-action@v0.0.11
         with:
-          version: "v0.10.0"
+          version: 'v0.10.0'
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
       - name: Clippy
-        run: cargo clippy --all-features -- -D warnings
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
 
   test:
     name: Test
@@ -45,34 +47,62 @@ jobs:
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+
+
     env:
       REDIS_URL: redis://127.0.0.1:6379/
     steps:
       - uses: actions/checkout@v7
       - uses: mozilla-actions/sccache-action@v0.0.11
         with:
-          version: "v0.10.0"
+          version: 'v0.10.0'
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test --locked
+      - name: Run all-target tests
+        run: cargo test --locked --all-targets --all-features
       - name: Run doc tests
-        run: cargo test --doc --all-features
+        run: cargo test --locked --doc --all-features
       - name: Test core without default features
         run: cargo test --locked --no-default-features
       - name: Test Axum in isolation
         run: cargo test --locked --no-default-features --features axum
       - name: Test tracing in isolation
         run: cargo test --locked --no-default-features --features tracing
+      - name: Check features without default features
+        run: |
+          cargo check --locked --no-default-features --features memory
+          cargo check --locked --no-default-features --features redis
+          cargo check --locked --no-default-features --features redis-lua
+          cargo check --locked --no-default-features --features runtime-tokio
+          cargo check --locked --no-default-features --features runtime-smol
       - name: Check examples
         run: cargo check --locked --examples --all-features
+      - name: Deny rustdoc warnings
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --locked --all-features --no-deps
       - name: Verify package
         run: cargo package --locked
+
+  docs:
+    name: mdBook
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mdBook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: ${{ env.MDBOOK_VERSION }}
+      - name: Install mdBook Mermaid
+        run: cargo install mdbook-mermaid --version "${MDBOOK_MERMAID_VERSION}" --locked
+      - name: Configure mdBook Mermaid
+        run: mdbook-mermaid install .
+      - name: Build mdBook
+        run: mdbook build
 
   redis-test:
     name: Redis (${{ matrix.name }})
@@ -99,22 +129,21 @@ jobs:
         ports:
           - 6379:6379
         options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+          --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 5s --health-retries 10
+
+
     env:
       REDIS_URL: redis://127.0.0.1:6379/
     steps:
       - uses: actions/checkout@v7
       - uses: mozilla-actions/sccache-action@v0.0.11
         with:
-          version: "v0.10.0"
+          version: 'v0.10.0'
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true
       - name: Run Redis integration test
-        run: cargo test --no-default-features --features "${{ matrix.features }}" ${{ matrix.targets }}
+        run: cargo test --locked --no-default-features --features "${{ matrix.features }}" ${{ matrix.targets }}
 
   msrv:
     name: MSRV Check
@@ -141,7 +170,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: mozilla-actions/sccache-action@v0.0.11
         with:
-          version: "v0.10.0"
+          version: 'v0.10.0'
       - uses: Swatinem/rust-cache@v2
         with:
           cache-on-failure: true

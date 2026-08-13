@@ -1,11 +1,6 @@
 //! Redis rate-limit store, enabled by the `redis` Cargo feature.
 
-use std::{
-    future::Future,
-    pin::Pin,
-    task::{Context, Poll},
-    time::Duration,
-};
+use std::{future::Future, pin::Pin, time::Duration};
 
 use redis::aio::MultiplexedConnection;
 
@@ -66,7 +61,9 @@ impl From<RedisStoreError> for RateLimitError {
 ///
 /// The connection is supplied by the caller and is cloned for each increment. A Redis
 /// `MultiplexedConnection` clone shares its underlying connection and does not transfer
-/// connection lifecycle ownership to this adapter.
+/// connection lifecycle ownership to this adapter. Window durations are truncated to whole
+/// milliseconds because Redis expiry commands use millisecond precision; values shorter than one
+/// millisecond are rejected.
 #[derive(Clone, Debug)]
 pub struct RedisStore {
     connection: MultiplexedConnection,
@@ -95,17 +92,17 @@ impl RedisStore {
 }
 
 impl Store for RedisStore {
-    type Future = RedisStoreFuture;
+    type Future = Pin<Box<dyn Future<Output = Result<Usage, RateLimitError>> + Send>>;
 
     fn increment(&self, key: &str, window: Duration) -> Self::Future {
         let window_millis = match checked_window_millis(window) {
             Ok(window_millis) => window_millis,
-            Err(error) => return RedisStoreFuture::error(error.into()),
+            Err(error) => return Box::pin(std::future::ready(Err(error.into()))),
         };
         let redis_key = self.redis_key(key);
         let mut connection = self.connection.clone();
 
-        RedisStoreFuture::new(async move {
+        Box::pin(async move {
             let result = increment_counter(&mut connection, &redis_key, window_millis).await?;
             usage_from_increment_result(result).map_err(Into::into)
         })
@@ -146,36 +143,6 @@ async fn increment_counter(
         .query_async(connection)
         .await
         .map_err(Into::into)
-}
-
-/// Named future returned by [`RedisStore::increment`](Store::increment).
-pub struct RedisStoreFuture {
-    inner: Pin<Box<dyn Future<Output = Result<Usage, RateLimitError>> + Send>>,
-}
-
-impl RedisStoreFuture {
-    /// Create a future for one Redis usage increment.
-    fn new<F>(future: F) -> Self
-    where
-        F: Future<Output = Result<Usage, RateLimitError>> + Send + 'static,
-    {
-        Self {
-            inner: Box::pin(future),
-        }
-    }
-
-    /// Create a new RedisStoreFuture from an error.
-    fn error(error: RateLimitError) -> Self {
-        Self::new(std::future::ready(Err(error)))
-    }
-}
-
-impl Future for RedisStoreFuture {
-    type Output = Result<Usage, RateLimitError>;
-
-    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
-        self.inner.as_mut().poll(context)
-    }
 }
 
 fn checked_window_millis(window: Duration) -> Result<i64, RedisStoreError> {
@@ -272,6 +239,10 @@ mod tests {
         ));
         assert_eq!(
             checked_window_millis(Duration::from_millis(1)).expect("one millisecond"),
+            1
+        );
+        assert_eq!(
+            checked_window_millis(Duration::from_micros(1_500)).expect("sub-millisecond remainder is truncated"),
             1
         );
         assert_eq!(
