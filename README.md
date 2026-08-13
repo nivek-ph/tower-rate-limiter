@@ -1,32 +1,29 @@
 # tower-rate-limiter
 
 [Crates.io](https://crates.io/crates/tower-rate-limiter) ·
-[Documentation](https://docs.rs/tower-rate-limiter)
+[API docs](https://docs.rs/tower-rate-limiter) ·
+[Book](https://nivek-ph.github.io/tower-rate-limiter/) ·
+[Examples](https://github.com/nivek-ph/tower-rate-limiter/tree/main/examples)
 
 Keyed, fixed-window HTTP rate limiting middleware for [Tower](https://github.com/tower-rs/tower).
-Limit repeated requests by account, API client, peer address, or any other application-defined
-identity.
 
 - Tower-first core with optional Axum integration
 - Fixed or request-derived quotas
-- Process-local memory and shared Redis Stores
+- Process-local memory and shared Redis counters
 - Custom keys, responses, bypass rules, and Store failure behavior
-- Optional structured tracing for Store failures
-- IETF `RateLimit` and `RateLimit-Policy` response fields
-
-[Guide](https://nivek-ph.github.io/tower-rate-limiter/) ·
-[API documentation](https://docs.rs/tower-rate-limiter) ·
-[Examples](https://github.com/nivek-ph/tower-rate-limiter/tree/main/examples)
+- IETF draft `RateLimit` and `RateLimit-Policy` response fields
 
 ## Quick start
 
-The default feature includes the process-local `MemoryStore`. The crate requires Rust 1.96 or
-newer.
+The default feature includes the process-local `MemoryStore`. Rust 1.96 or newer is required.
 
 ```toml
 [dependencies]
 tower-rate-limiter = "0.1"
+tower = "0.5"
 ```
+
+Create a policy, attach a Store, and layer it around a Tower service:
 
 ```rust
 use std::time::Duration;
@@ -44,52 +41,26 @@ let limiter = RateLimitLayer::builder(IpKeyExtractor::new())
 let service = limiter.layer(inner_service);
 ```
 
-The Store is always explicit through `.with_store(...)`. `IpKeyExtractor` reads only the peer
-`SocketAddr` from request extensions; Axum applications must provide `ConnectInfo`. Behind a trusted
-proxy, `TrustedProxyClientIpKeyExtractor` accepts an application-supplied peer trust policy before
-checking supported client-IP headers. `ClientIpKeyExtractor` preserves header-first behavior for
-deployments where every request is already restricted to a trusted proxy. Header-derived identity is
-safe only when the proxy removes or overwrites every accepted header. See the [quick-start
-guide](https://nivek-ph.github.io/tower-rate-limiter/getting-started.html) for a complete runnable
-example.
+This policy allows 100 requests per peer IP in each 60-second fixed window. The next request
+receives `429 Too Many Requests` with `Retry-After`. See the
+[quick-start guide](https://nivek-ph.github.io/tower-rate-limiter/getting-started.html) for a
+complete runnable example.
 
-## Stores
+> `MemoryStore` keeps counters in one process. Use Redis or a custom shared Store when several
+> application instances must enforce the same quota.
 
-| Store | Use when |
-| --- | --- |
-| `MemoryStore` | One process owns the quota, or for local development |
-| `RedisStore` | Multiple processes must share one quota |
-| Custom `Store` | The application needs another counter backend |
-
-For Redis with Tokio and the default transaction implementation:
-
-```toml
-[dependencies]
-tower-rate-limiter = {
-    version = "0.1",
-    default-features = false,
-    features = ["redis", "runtime-tokio"],
-}
-```
-
-Use `redis-lua` instead of `redis` for the Lua implementation, or `runtime-smol` instead of
-`runtime-tokio` for Smol. The application provides an established Redis connection and owns its
-lifecycle.
+`IpKeyExtractor` reads the peer socket address from request extensions. When using forwarded
+client-IP headers, define and enforce the trusted-proxy boundary first. See
+[Axum and Redis](https://nivek-ph.github.io/tower-rate-limiter/adapters.html) and the
+[production guide](https://nivek-ph.github.io/tower-rate-limiter/production.html).
 
 ## Documentation
 
-| Topic | Guide |
-| --- | --- |
-| Installation and first Layer | [Quick start](https://nivek-ph.github.io/tower-rate-limiter/getting-started.html) |
-| Charging and fixed-window semantics | [How it works](https://nivek-ph.github.io/tower-rate-limiter/concepts.html) |
-| Builder options and failure behavior | [Configuration](https://nivek-ph.github.io/tower-rate-limiter/configuration.html) |
-| Axum, Redis, and proxy considerations | [Adapters](https://nivek-ph.github.io/tower-rate-limiter/adapters.html) |
-| Custom keys, quotas, Stores, and responses | [Custom components](https://nivek-ph.github.io/tower-rate-limiter/custom-components.html) |
-| Response field formats | [Rate Limit fields](https://nivek-ph.github.io/tower-rate-limiter/rate-limit-fields.html) |
-| Deployment checklist | [Production guide](https://nivek-ph.github.io/tower-rate-limiter/production.html) |
-
-Runnable Tower, Axum, dynamic-quota, proxy, and Redis integrations are collected in
-[`examples/`](examples).
+- [Quick start](https://nivek-ph.github.io/tower-rate-limiter/getting-started.html)
+- [Configuration](https://nivek-ph.github.io/tower-rate-limiter/configuration.html)
+- [How it works](https://nivek-ph.github.io/tower-rate-limiter/concepts.html)
+- [Examples](https://nivek-ph.github.io/tower-rate-limiter/examples.html)
+- [API documentation](https://docs.rs/tower-rate-limiter)
 
 ## Contributing
 
