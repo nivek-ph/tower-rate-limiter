@@ -1,0 +1,14 @@
+Running 30s test @ http://bench:3000/redis
+  4 threads and 64 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     1.51ms    3.93ms 116.86ms   98.73%
+    Req/Sec    13.23k     1.89k   35.90k    87.33%
+  Latency Distribution
+     50%    1.13ms
+     75%    1.33ms
+     90%    1.59ms
+     99%    8.57ms
+  1580886 requests in 30.09s, 253.29MB read
+Requests/sec:  52546.63
+Transfer/sec:      8.42MB
+BENCHMARK_CSV,1580886,52546.63,1130,1796,8572,0,0,0,0,0

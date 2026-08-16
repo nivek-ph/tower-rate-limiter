@@ -1,0 +1,14 @@
+Running 30s test @ http://bench:3000/baseline
+  4 threads and 16 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency     0.95ms    4.13ms  69.19ms   95.53%
+    Req/Sec    29.08k     4.84k   50.07k    78.17%
+  Latency Distribution
+     50%  128.00us
+     75%  160.00us
+     90%  281.00us
+     99%   23.63ms
+  3472553 requests in 30.02s, 211.95MB read
+Requests/sec: 115679.62
+Transfer/sec:      7.06MB
+BENCHMARK_CSV,3472553,115679.62,128,3004,23634,0,0,0,0,0

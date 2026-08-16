@@ -1,0 +1,20 @@
+timestamp=20260816T141050Z
+base_url=http://bench:3000
+threads=4
+concurrencies=16 64 256
+duration=30s
+warmup_duration=5s
+runs=3
+many_key_space=10000
+seed=1337
+topology=docker-internal
+source_commit=20d3852c7ca6e8f216c4f6dc053be0d8bc3139e3
+source_dirty=false
+machine_details=Darwin o.o 25.5.0 arm64 T6000 via OrbStack
+server_build_image=rust:1.96-bookworm
+server_rustc_version=not-recorded
+redis_image=redis:7.4-bookworm
+redis_server_version=not-recorded
+application_placement=compose-service:bench
+redis_placement=compose-service:redis
+resource_limits=bench=1cpu/2g;redis=1cpu/512m;loadgen=1cpu/512m
