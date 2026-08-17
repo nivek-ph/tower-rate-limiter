@@ -1,0 +1,14 @@
+Running 30s test @ http://bench:3000/memory
+  4 threads and 16 connections
+  Thread Stats   Avg      Stdev     Max   +/- Stdev
+    Latency   232.72us  247.29us  15.37ms   99.22%
+    Req/Sec    17.80k   669.99    19.87k    86.96%
+  Latency Distribution
+     50%  226.00us
+     75%  240.00us
+     90%  269.00us
+     99%  457.00us
+  2131821 requests in 30.10s, 341.55MB read
+Requests/sec:  70822.45
+Transfer/sec:     11.35MB
+BENCHMARK_CSV,2131821,70822.45,226,321,457,0,0,0,0,0

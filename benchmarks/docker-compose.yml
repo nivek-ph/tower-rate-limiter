@@ -1,0 +1,78 @@
+name: tower-rate-limiter-benchmark
+
+services:
+  redis:
+    image: ${REDIS_IMAGE:-redis:7.4-bookworm}
+    command:
+      - redis-server
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+      - --maxmemory
+      - 512mb
+      - --maxmemory-policy
+      - noeviction
+    cpus: "1.00"
+    mem_limit: 512m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 1s
+      timeout: 1s
+      retries: 30
+
+  bench:
+    build:
+      context: ..
+      dockerfile: benchmarks/Dockerfile
+      args:
+        BENCH_FEATURES: ${BENCH_FEATURES:-axum,memory,redis,runtime-tokio}
+    environment:
+      BENCH_ADDRESS: 0.0.0.0:3000
+      BENCH_LIMIT: ${BENCH_LIMIT:-1000000000}
+      BENCH_WINDOW_SECS: ${BENCH_WINDOW_SECS:-3600}
+      REDIS_URL: redis://redis:6379/
+    depends_on:
+      redis:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${BENCH_HOST_PORT:-3000}:3000"
+    cpus: "1.00"
+    mem_limit: 2g
+    pids_limit: 256
+
+  loadgen:
+    profiles: ["loadgen"]
+    build:
+      context: ..
+      dockerfile: benchmarks/Dockerfile.loadgen
+    working_dir: /workspace
+    environment:
+      BENCH_BASE_URL: http://bench:3000
+      BENCH_TOPOLOGY: docker-internal
+      BENCH_REQUIRE_CLEAN_SOURCE: "1"
+      BENCH_SOURCE_COMMIT: ${BENCH_SOURCE_COMMIT:-not-recorded}
+      BENCH_SOURCE_DIRTY: ${BENCH_SOURCE_DIRTY:-not-recorded}
+      BENCH_MACHINE_DETAILS: ${BENCH_MACHINE_DETAILS:-not-recorded}
+      BENCH_SERVER_BUILD_IMAGE: ${BENCH_SERVER_BUILD_IMAGE:-rust:1.96-bookworm}
+      BENCH_REDIS_IMAGE: ${REDIS_IMAGE:-redis:7.4-bookworm}
+      BENCH_APP_PLACEMENT: compose-service:bench
+      BENCH_REDIS_PLACEMENT: compose-service:redis
+      BENCH_RESOURCE_LIMITS: bench=1cpu/2g;redis=1cpu/512m;loadgen=1cpu/512m
+    depends_on:
+      bench:
+        condition: service_started
+    volumes:
+      - ./output:/workspace/benchmarks/output
+    cpus: "1.00"
+    mem_limit: 512m
+    pids_limit: 256
+    command:
+      - bash
+      - -lc
+      - |
+        until curl -fsS "$${BENCH_BASE_URL}/info" >/dev/null; do
+          sleep 1
+        done
+        exec bash benchmarks/run.sh

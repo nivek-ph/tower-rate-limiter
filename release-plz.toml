@@ -1,6 +1,9 @@
 [workspace]
+# Only release when the release PR is merged, not on every commit
+# https://release-plz.dev/docs/config#the-release_always-field
 release_always = false
-semver_check = false
+
+# Don't increment the minor version for every feature commit
 features_always_increment_minor = false
 
 # On the current 0.x line, ordinary feature, fix, and performance commits produce patch releases.
@@ -8,4 +11,6 @@ features_always_increment_minor = false
 # use Conventional Commit breaking markers.
 release_commits = '^(?:feat|fix|perf)(?:\([^)]*\))?:'
 
+# Label release PRs for easy identification
+# https://release-plz.dev/docs/config#the-pr_labels-field
 pr_labels = ["release"]

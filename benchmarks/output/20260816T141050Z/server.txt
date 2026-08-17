@@ -1,0 +1,5 @@
+redis_benchmark=lua
+policy_name=default-policy
+limit=1000000000
+window_secs=3600
+redis_namespace=benchmark-lua

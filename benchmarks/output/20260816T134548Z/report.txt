@@ -1,0 +1,592 @@
+Benchmark report
+timestamp=20260816T134548Z
+base_url=http://bench:3000
+threads=4
+concurrencies=16 64 256
+duration=30s
+runs=3
+
+[baseline-none-c16-run1]
+Statistics        Avg      Stdev        Max
+Latency           0.95ms 4.13ms 69.19ms
+Reqs/sec          115679.62
+Latency Distribution
+  50%             128us
+  75%             160.00us
+  90%             281.00us
+  95%             3.00ms
+  99%             23.63ms
+Requests          3472553
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c16-run2]
+Statistics        Avg      Stdev        Max
+Latency           1.06ms 4.02ms 36.96ms
+Reqs/sec          115575.89
+Latency Distribution
+  50%             124us
+  75%             158.00us
+  90%             340.00us
+  95%             7.06ms
+  99%             23.42ms
+Requests          3479157
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c16-run3]
+Statistics        Avg      Stdev        Max
+Latency           589.49us 2.74ms 34.03ms
+Reqs/sec          127843.58
+Latency Distribution
+  50%             119us
+  75%             152.00us
+  90%             235.00us
+  95%             968us
+  99%             17.72ms
+Requests          3848687
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c16-run1]
+Statistics        Avg      Stdev        Max
+Latency           1.17ms 8.64ms 186.32ms
+Reqs/sec          69290.91
+Latency Distribution
+  50%             224us
+  75%             241.00us
+  90%             319.00us
+  95%             588us
+  99%             25.08ms
+Requests          2083637
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c16-run2]
+Statistics        Avg      Stdev        Max
+Latency           232.72us 247.29us 15.37ms
+Reqs/sec          70822.45
+Latency Distribution
+  50%             226us
+  75%             240.00us
+  90%             269.00us
+  95%             321us
+  99%             457us
+Requests          2131821
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c16-run3]
+Statistics        Avg      Stdev        Max
+Latency           251.93us 438.86us 19.55ms
+Reqs/sec          70061.45
+Latency Distribution
+  50%             228us
+  75%             242.00us
+  90%             272.00us
+  95%             330us
+  99%             524us
+Requests          2108978
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c16-run1]
+Statistics        Avg      Stdev        Max
+Latency           274.28us 390.29us 17.75ms
+Reqs/sec          62203.69
+Latency Distribution
+  50%             254us
+  75%             282.00us
+  90%             328.00us
+  95%             378us
+  99%             537us
+Requests          1872475
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c16-run2]
+Statistics        Avg      Stdev        Max
+Latency           532.36us 3.28ms 100.33ms
+Reqs/sec          60893.35
+Latency Distribution
+  50%             254us
+  75%             284.00us
+  90%             342.00us
+  95%             420us
+  99%             6.58ms
+Requests          1830165
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c16-run3]
+Statistics        Avg      Stdev        Max
+Latency           298.64us 645.33us 44.00ms
+Reqs/sec          60922.66
+Latency Distribution
+  50%             259us
+  75%             287.00us
+  90%             332.00us
+  95%             387us
+  99%             681us
+Requests          1829359
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c16-run1]
+Statistics        Avg      Stdev        Max
+Latency           359.22us 767.54us 37.04ms
+Reqs/sec          49756.84
+Latency Distribution
+  50%             308us
+  75%             358.00us
+  90%             429.00us
+  95%             490us
+  99%             718us
+Requests          1493161
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c16-run2]
+Statistics        Avg      Stdev        Max
+Latency           355.51us 397.95us 16.20ms
+Reqs/sec          47067.08
+Latency Distribution
+  50%             328us
+  75%             387.00us
+  90%             452.00us
+  95%             509us
+  99%             692us
+Requests          1416681
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c16-run3]
+Statistics        Avg      Stdev        Max
+Latency           379.00us 528.12us 19.00ms
+Reqs/sec          45436.73
+Latency Distribution
+  50%             343us
+  75%             400.00us
+  90%             467.00us
+  95%             527us
+  99%             760us
+Requests          1367684
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c16-run1]
+Statistics        Avg      Stdev        Max
+Latency           342.39us 268.72us 14.65ms
+Reqs/sec          47931.92
+Latency Distribution
+  50%             319us
+  75%             376.00us
+  90%             449.00us
+  95%             509us
+  99%             707us
+Requests          1442745
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c16-run2]
+Statistics        Avg      Stdev        Max
+Latency           359.66us 537.40us 22.47ms
+Reqs/sec          47720.08
+Latency Distribution
+  50%             320us
+  75%             379.00us
+  90%             451.00us
+  95%             512us
+  99%             716us
+Requests          1436478
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c16-run3]
+Statistics        Avg      Stdev        Max
+Latency           406.42us 1.00ms 42.58ms
+Reqs/sec          45200.27
+Latency Distribution
+  50%             338us
+  75%             404.00us
+  90%             477.00us
+  95%             544us
+  99%             900us
+Requests          1360492
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c64-run1]
+Statistics        Avg      Stdev        Max
+Latency           0.96ms 2.71ms 46.09ms
+Reqs/sec          129805.69
+Latency Distribution
+  50%             454us
+  75%             583.00us
+  90%             0.86ms
+  95%             2.04ms
+  99%             17.28ms
+Requests          3907277
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c64-run2]
+Statistics        Avg      Stdev        Max
+Latency           713.10us 1.67ms 28.08ms
+Reqs/sec          126298.75
+Latency Distribution
+  50%             499us
+  75%             605.00us
+  90%             824.00us
+  95%             1.35ms
+  99%             8.71ms
+Requests          3792236
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c64-run3]
+Statistics        Avg      Stdev        Max
+Latency           713.30us 2.04ms 63.45ms
+Reqs/sec          125922.02
+Latency Distribution
+  50%             495us
+  75%             613.00us
+  90%             816.00us
+  95%             1.23ms
+  99%             7.79ms
+Requests          3783741
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c64-run1]
+Statistics        Avg      Stdev        Max
+Latency           1.04ms 1.34ms 51.41ms
+Reqs/sec          65657.12
+Latency Distribution
+  50%             925us
+  75%             1.02ms
+  90%             1.21ms
+  95%             1.31ms
+  99%             1.66ms
+Requests          1976292
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c64-run2]
+Statistics        Avg      Stdev        Max
+Latency           0.97ms 607.61us 20.88ms
+Reqs/sec          67465.61
+Latency Distribution
+  50%             909us
+  75%             0.99ms
+  90%             1.16ms
+  95%             1.26ms
+  99%             1.49ms
+Requests          2024666
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c64-run3]
+Statistics        Avg      Stdev        Max
+Latency           1.02ms 1.43ms 52.81ms
+Reqs/sec          67813.69
+Latency Distribution
+  50%             909us
+  75%             0.98ms
+  90%             1.17ms
+  95%             1.28ms
+  99%             2.19ms
+Requests          2035611
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c64-run1]
+Statistics        Avg      Stdev        Max
+Latency           1.13ms 705.03us 31.61ms
+Reqs/sec          58496.01
+Latency Distribution
+  50%             1.07ms
+  75%             1.19ms
+  90%             1.33ms
+  95%             1.41ms
+  99%             1.68ms
+Requests          1755752
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c64-run2]
+Statistics        Avg      Stdev        Max
+Latency           1.11ms 607.33us 19.39ms
+Reqs/sec          59279.15
+Latency Distribution
+  50%             1.04ms
+  75%             1.17ms
+  90%             1.31ms
+  95%             1.40ms
+  99%             1.64ms
+Requests          1784374
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c64-run3]
+Statistics        Avg      Stdev        Max
+Latency           1.10ms 568.29us 26.02ms
+Reqs/sec          59259.94
+Latency Distribution
+  50%             1.05ms
+  75%             1.17ms
+  90%             1.31ms
+  95%             1.40ms
+  99%             1.64ms
+Requests          1778217
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c64-run1]
+Statistics        Avg      Stdev        Max
+Latency           1.39ms 2.13ms 59.30ms
+Reqs/sec          52521.35
+Latency Distribution
+  50%             1.12ms
+  75%             1.34ms
+  90%             1.60ms
+  95%             1.80ms
+  99%             6.31ms
+Requests          1579221
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c64-run2]
+Statistics        Avg      Stdev        Max
+Latency           1.29ms 639.43us 22.84ms
+Reqs/sec          50487.38
+Latency Distribution
+  50%             1.21ms
+  75%             1.43ms
+  90%             1.65ms
+  95%             1.82ms
+  99%             2.24ms
+Requests          1514874
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c64-run3]
+Statistics        Avg      Stdev        Max
+Latency           1.19ms 628.30us 24.09ms
+Reqs/sec          54820.87
+Latency Distribution
+  50%             1.09ms
+  75%             1.28ms
+  90%             1.50ms
+  95%             1.65ms
+  99%             2.15ms
+Requests          1644857
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c64-run1]
+Statistics        Avg      Stdev        Max
+Latency           1.34ms 2.42ms 96.68ms
+Reqs/sec          53164.19
+Latency Distribution
+  50%             1.13ms
+  75%             1.33ms
+  90%             1.55ms
+  95%             1.71ms
+  99%             2.80ms
+Requests          1595994
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c64-run2]
+Statistics        Avg      Stdev        Max
+Latency           1.51ms 3.93ms 116.86ms
+Reqs/sec          52546.63
+Latency Distribution
+  50%             1.13ms
+  75%             1.33ms
+  90%             1.59ms
+  95%             1.80ms
+  99%             8.57ms
+Requests          1580886
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c64-run3]
+Statistics        Avg      Stdev        Max
+Latency           1.04ms 197.69us 4.56ms
+Reqs/sec          61407.58
+Latency Distribution
+  50%             1.01ms
+  75%             1.10ms
+  90%             1.25ms
+  95%             1.38ms
+  99%             1.65ms
+Requests          1842304
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c256-run1]
+Statistics        Avg      Stdev        Max
+Latency           2.12ms 2.62ms 49.96ms
+Reqs/sec          139108.85
+Latency Distribution
+  50%             1.74ms
+  75%             2.15ms
+  90%             2.67ms
+  95%             3.25ms
+  99%             16.54ms
+Requests          4184090
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c256-run2]
+Statistics        Avg      Stdev        Max
+Latency           1.96ms 2.12ms 58.16ms
+Reqs/sec          142980.06
+Latency Distribution
+  50%             1.70ms
+  75%             2.12ms
+  90%             2.68ms
+  95%             3.14ms
+  99%             11.41ms
+Requests          4294685
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[baseline-none-c256-run3]
+Statistics        Avg      Stdev        Max
+Latency           1.69ms 1.38ms 49.76ms
+Reqs/sec          154974.95
+Latency Distribution
+  50%             1.61ms
+  75%             1.95ms
+  90%             2.39ms
+  95%             2.75ms
+  99%             3.91ms
+Requests          4656041
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c256-run1]
+Statistics        Avg      Stdev        Max
+Latency           4.16ms 1.92ms 57.61ms
+Reqs/sec          62594.65
+Latency Distribution
+  50%             4.02ms
+  75%             4.54ms
+  90%             4.98ms
+  95%             5.24ms
+  99%             6.21ms
+Requests          1878530
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c256-run2]
+Statistics        Avg      Stdev        Max
+Latency           3.67ms 1.39ms 40.03ms
+Reqs/sec          69589.61
+Latency Distribution
+  50%             3.56ms
+  75%             3.93ms
+  90%             4.54ms
+  95%             4.88ms
+  99%             7.04ms
+Requests          2088875
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-hot-c256-run3]
+Statistics        Avg      Stdev        Max
+Latency           3.88ms 1.79ms 209.71ms
+Reqs/sec          66141.27
+Latency Distribution
+  50%             3.71ms
+  75%             4.28ms
+  90%             4.81ms
+  95%             5.13ms
+  99%             6.43ms
+Requests          1986658
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c256-run1]
+Statistics        Avg      Stdev        Max
+Latency           3.99ms 1.33ms 49.54ms
+Reqs/sec          64574.56
+Latency Distribution
+  50%             3.84ms
+  75%             4.20ms
+  90%             4.85ms
+  95%             5.21ms
+  99%             6.06ms
+Requests          1943928
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c256-run2]
+Statistics        Avg      Stdev        Max
+Latency           4.77ms 3.31ms 85.09ms
+Reqs/sec          56038.21
+Latency Distribution
+  50%             4.51ms
+  75%             5.04ms
+  90%             5.57ms
+  95%             5.94ms
+  99%             9.57ms
+Requests          1684688
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[memory-many-c256-run3]
+Statistics        Avg      Stdev        Max
+Latency           4.81ms 2.48ms 74.03ms
+Reqs/sec          54500.58
+Latency Distribution
+  50%             4.64ms
+  75%             5.07ms
+  90%             5.48ms
+  95%             5.78ms
+  99%             7.24ms
+Requests          1636826
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c256-run1]
+Statistics        Avg      Stdev        Max
+Latency           4.88ms 2.34ms 59.06ms
+Reqs/sec          53695.60
+Latency Distribution
+  50%             4.49ms
+  75%             5.25ms
+  90%             6.02ms
+  95%             6.62ms
+  99%             9.34ms
+Requests          1612862
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c256-run2]
+Statistics        Avg      Stdev        Max
+Latency           4.68ms 2.11ms 62.31ms
+Reqs/sec          55600.32
+Latency Distribution
+  50%             4.33ms
+  75%             5.03ms
+  90%             5.70ms
+  95%             6.13ms
+  99%             7.57ms
+Requests          1670291
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-hot-c256-run3]
+Statistics        Avg      Stdev        Max
+Latency           4.57ms 1.53ms 57.92ms
+Reqs/sec          56410.07
+Latency Distribution
+  50%             4.32ms
+  75%             4.92ms
+  90%             5.55ms
+  95%             5.99ms
+  99%             7.59ms
+Requests          1693383
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c256-run1]
+Statistics        Avg      Stdev        Max
+Latency           4.59ms 2.08ms 60.15ms
+Reqs/sec          56789.05
+Latency Distribution
+  50%             4.29ms
+  75%             4.99ms
+  90%             5.70ms
+  95%             6.22ms
+  99%             8.28ms
+Requests          1704761
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c256-run2]
+Statistics        Avg      Stdev        Max
+Latency           4.37ms 1.21ms 205.06ms
+Reqs/sec          57505.42
+Latency Distribution
+  50%             4.26ms
+  75%             4.91ms
+  90%             5.66ms
+  95%             6.13ms
+  99%             7.26ms
+Requests          1725907
+Errors            connect=0 read=0 write=0 status=0 timeout=0
+
+[redis-many-c256-run3]
+Statistics        Avg      Stdev        Max
+Latency           5.11ms 3.06ms 69.25ms
+Reqs/sec          51934.11
+Latency Distribution
+  50%             4.74ms
+  75%             5.45ms
+  90%             6.22ms
+  95%             6.97ms
+  99%             13.04ms
+Requests          1561032
+Errors            connect=0 read=0 write=0 status=0 timeout=0

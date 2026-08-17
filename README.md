@@ -62,6 +62,14 @@ client-IP headers, define and enforce the trusted-proxy boundary first. See
 - [Examples](https://nivek-ph.github.io/tower-rate-limiter/examples.html)
 - [API documentation](https://docs.rs/tower-rate-limiter)
 
+## Benchmarks
+
+The repository includes a Docker Compose benchmark harness with isolated Redis, a benchmark server,
+and an optional in-network `wrk` load generator. Results are written to `benchmarks/output/` with
+raw measurements, `summary.csv`, and `report.txt`. See the
+[benchmark guide](https://github.com/nivek-ph/tower-rate-limiter/blob/main/benchmarks/README.md)
+for local runs, resource limits, and reproducible settings.
+
 ## Contributing
 
 Bug reports, feature requests, and contributions are welcome through

@@ -79,6 +79,11 @@ required-features = ["axum", "memory"]
 name = "axum_redis"
 required-features = ["axum", "redis", "runtime-tokio"]
 
+[[example]]
+name = "benchmark_server"
+path = "benchmarks/benchmark_server.rs"
+required-features = ["axum", "memory", "redis", "runtime-tokio"]
+
 [[test]]
 name = "axum"
 required-features = ["axum"]
