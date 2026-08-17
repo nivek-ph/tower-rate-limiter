@@ -11,7 +11,6 @@ homepage = "https://github.com/nivek-ph/tower-rate-limiter"
 repository = "https://github.com/nivek-ph/tower-rate-limiter"
 license = "MIT OR Apache-2.0"
 authors = ["nivek-ph <h499871809@gmail.com>"]
-# Keep repository-only benchmark tooling out of published packages.
 include = [
 	"/src/**",
 	"/examples/**",
